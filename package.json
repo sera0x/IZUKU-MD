@@ -11,7 +11,7 @@
  },
  "author": "excelottah6",
 "dependencies": {
-  "@node-schedule": "^2.0.0",
+  "node-schedule": "^2.0.0",
   "@adiwajshing/keyed-db": "^0.2.4",
   "@hapi/boom": "^9.1.4",
   "@sampandey001/baileys": "latest",

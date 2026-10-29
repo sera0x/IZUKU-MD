@@ -246,7 +246,10 @@ fetch_code() {
 
 install_deps() {
     info "installing npm dependencies (postinstall also builds dist/)"
-    if ! npm install --no-audit --no-fund >>"$LOG_FILE" 2>&1; then
+    # tsc does not delete output for sources that were removed, so a stale dist/
+    # keeps loading old command files ("Duplicate command: setgcpp"). Build clean.
+    rm -rf dist
+    if ! npm install --no-audit --no-fund --prefer-offline --no-progress >>"$LOG_FILE" 2>&1; then
         warn "npm install failed — retrying after installing build tools"
         case "$PKG" in
             apt)    run_priv apt-get install -y build-essential python3 >>"$LOG_FILE" 2>&1 ;;
@@ -254,7 +257,7 @@ install_deps() {
             pacman) run_priv pacman -Sy --noconfirm base-devel python >>"$LOG_FILE" 2>&1 ;;
             apk)    run_priv apk add --no-cache build-base python3 >>"$LOG_FILE" 2>&1 ;;
         esac
-        npm install --no-audit --no-fund >>"$LOG_FILE" 2>&1 || die "npm install failed — see $LOG_FILE"
+        npm install --no-audit --no-fund --prefer-offline --no-progress >>"$LOG_FILE" 2>&1 || die "npm install failed — see $LOG_FILE"
     fi
 
     # dist/ is what `npm start` runs on plain node.
@@ -276,8 +279,44 @@ set_env() {
 }
 
 read_config_value() {
-    [ -f config.env ] || return 0
-    sed -n "s/^$1=//p" config.env | head -1
+    local file="${2:-config.env}"
+    [ -f "$file" ] || return 0
+    sed -n "s/^$1=//p" "$file" | head -1
+}
+
+# Ask for the owner number and session id BEFORE anything is installed, so the
+# installer does not spend minutes on npm while the user is still waiting to be
+# asked for their details.
+collect_inputs() {
+    local file=""
+    if [ -f "$DIR/config.env" ]; then
+        file="$DIR/config.env"
+    elif [ -f "$DIR/.env" ]; then
+        file="$DIR/.env"
+    fi
+
+    if [ -z "$OWNER_NUMBER" ] && [ -n "$file" ]; then
+        OWNER_NUMBER="$(read_config_value OWNER_NUMBER "$file")"
+    fi
+    if [ -z "$SESSION_ID" ] && [ -n "$file" ]; then
+        SESSION_ID="$(read_config_value SESSION_ID "$file")"
+    fi
+
+    if [ -z "$OWNER_NUMBER" ]; then
+        ask "Bot WhatsApp number (digits with country code, e.g. 2348012345678):"
+        OWNER_NUMBER="$(printf '%s' "$REPLY" | tr -cd '0-9')"
+    fi
+    if [ -z "$SESSION_ID" ]; then
+        ask "SESSION_ID from the pairing site (blank = pair with a code at startup):"
+        SESSION_ID="$REPLY"
+    fi
+
+    say ""
+    say "installing now — this takes a few minutes:"
+    say "  dir:     $DIR"
+    if [ -n "$OWNER_NUMBER" ]; then say "  owner:   $OWNER_NUMBER"; fi
+    if [ -n "$SESSION_ID" ]; then say "  session: ${SESSION_ID:0:12}…"; fi
+    say ""
 }
 
 ask() {
@@ -384,6 +423,8 @@ main() {
     if [ "$(id -u)" -ne 0 ] && [ "$OS_TYPE" != "termux" ]; then
         if have sudo; then PRIV="sudo"; else PRIV=""; fi
     fi
+    # Ask first, install after.
+    collect_inputs
     check_prereqs
     install_system_deps
     install_node

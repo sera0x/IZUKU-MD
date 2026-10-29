@@ -39,6 +39,67 @@ function both(obj: unknown, msg?: string): string {
     return `${msg ?? ''} ${stringifySafe(obj)}`
 }
 
+/**
+ * libsignal (under Baileys) writes its recovery chatter straight to stderr with
+ * `console.error`/`console.warn`: "Failed to decrypt message with any known
+ * session", "Session error: Bad MAC" plus a stack trace for every dropped
+ * status/lid message. Baileys already deletes the broken session and the next
+ * message rekeys, so these lines only bury real errors. Drop them at the stream
+ * and keep everything else.
+ */
+const LIBSIGNAL_NOISE = [
+    /^Failed to decrypt message/,
+    /^Session error:/,
+    /^Decrypted message with closed session/,
+    /^Closing (?:stale open )?session/,
+    /^Session already (?:closed|open)/,
+]
+
+function silenceLibsignalNoise(): void {
+    const original = process.stderr.write.bind(process.stderr)
+    let lastSuppressed = 0
+
+    process.stderr.write = ((chunk: unknown, encoding?: unknown, callback?: unknown) => {
+        const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+        const trimmed = text.trimStart()
+        // Stack frames belong to the line above, so they go too.
+        const isNoise =
+            LIBSIGNAL_NOISE.some((pattern) => pattern.test(trimmed)) ||
+            (trimmed.startsWith('at ') && Date.now() - lastSuppressed < 1000)
+
+        if (isNoise) {
+            lastSuppressed = Date.now()
+            if (typeof encoding === 'function') encoding()
+            else if (typeof callback === 'function') callback()
+            return true
+        }
+
+        return (original as (...args: unknown[]) => boolean)(chunk, encoding, callback)
+    }) as typeof process.stderr.write
+}
+
+silenceLibsignalNoise()
+
+/**
+ * Baileys logs a warning every time a message cannot be decrypted with the
+ * stored session (an already-consumed prekey, a rotted counter, Bad MAC). It
+ * then deletes that session so the next message renegotiates, so the warning is
+ * recovery noise, not a failure. A busy account produces hundreds per hour.
+ */
+const RECOVERY_NOISE = [
+    /deleting poisoned session/i,
+    /failed to delete poisoned session/i,
+    /invalid prekey/i,
+    /bad mac/i,
+    /messagecountererror/i,
+    /no session record/i,
+    /key used already/i,
+    /failed to decrypt/i,
+    /sessionerror/i,
+]
+
+const isRecoveryNoise = (text: string): boolean => RECOVERY_NOISE.some((pattern) => pattern.test(text))
+
 function createSignalGuard(): {
     logger: ReturnType<typeof toBaileysLogger>
     hits: () => number
@@ -46,24 +107,36 @@ function createSignalGuard(): {
 } {
     const base = toBaileysLogger(baileysLog)
     let hits = 0
+    let suppressed = 0
+    let lastSummary = Date.now()
 
     const failing = new Set<string>()
 
     const note = (text: string): void => {
         const t = text.toLowerCase()
-        if (!t.includes('bad mac') && !t.includes('failed to decrypt')) return
+        if (!t.includes('bad mac') && !t.includes('failed to decrypt') && !t.includes('invalid prekey') && !t.includes('sessionerror')) return
         hits += 1
         if (hits === 1) log.warn('Bad MAC detected — will auto-reset stale sessions.')
         // Pull the failing chat's jids out of the baileys error payload so we
         // can drop just that one stale session instead of pairing from scratch.
+        // libsignal reports `{ jid }`; message decrypts carry remoteJid/participant.
         const remote = text.match(/"remoteJid":"([^"]+)"/)?.[1]
         const participant = text.match(/"participant":"([^"]+)"/)?.[1]
+        const jid = text.match(/"jid":"([^"]+)"/)?.[1]
         const fromMe = /"fromMe":true/.test(text)
-        const target = fromMe ? null : (participant ?? remote)
+        const target = fromMe ? null : (participant ?? remote ?? jid)
         if (target) failing.add(target)
     }
 
-
+    // One line every few minutes instead of one per dropped status/lid message.
+    const countSuppressed = (): void => {
+        suppressed += 1
+        const now = Date.now()
+        if (now - lastSummary < 5 * 60_000) return
+        log.info('recovered %d stale session(s) (prekey/Bad MAC noise suppressed)', suppressed)
+        suppressed = 0
+        lastSummary = now
+    }
 
     const wrap = (source: typeof base): typeof base => ({
         level: source.level,
@@ -72,11 +145,23 @@ function createSignalGuard(): {
         debug: source.debug,
         info: source.info,
         warn: (obj, msg) => {
-            note(both(obj, msg))
+            const text = both(obj, msg)
+            note(text)
+            if (isRecoveryNoise(text)) {
+                countSuppressed()
+                source.debug(text)
+                return
+            }
             source.warn(obj, msg)
         },
         error: (obj, msg) => {
-            note(both(obj, msg))
+            const text = both(obj, msg)
+            note(text)
+            if (isRecoveryNoise(text)) {
+                countSuppressed()
+                source.debug(text)
+                return
+            }
             source.error(obj, msg)
         },
     })

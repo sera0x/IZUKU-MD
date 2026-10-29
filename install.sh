@@ -284,11 +284,26 @@ read_config_value() {
     sed -n "s/^$1=//p" "$file" | head -1
 }
 
+pm2_name_taken() {
+    pm2 describe "$1" >/dev/null 2>&1
+}
+
+# Every deployed bot needs its own pm2 name, otherwise starting a second one
+# replaces the first. "IZUKU-MD" then "IZUKU-MD-1", "IZUKU-MD-2", …
+next_free_pm2_name() {
+    local base="$1" n=1
+    if ! pm2_name_taken "$base"; then printf '%s' "$base"; return 0; fi
+    while pm2_name_taken "$base-$n"; do n=$((n + 1)); done
+    printf '%s' "$base-$n"
+}
+
 # Ask for the owner number and session id BEFORE anything is installed, so the
 # installer does not spend minutes on npm while the user is still waiting to be
 # asked for their details.
 collect_inputs() {
     local file=""
+    local reusing=0
+    BOT_NAME="${BOT_NAME:-IZUKU-MD}"
     if [ -f "$DIR/config.env" ]; then
         file="$DIR/config.env"
     elif [ -f "$DIR/.env" ]; then
@@ -320,9 +335,25 @@ collect_inputs() {
                 say "  new bot will be installed in $DIR"
                 ;;
             *)
+                reusing=1
+                local stored
+                stored="$(read_config_value BOT_NAME "$file")"
+                if [ -n "$stored" ]; then BOT_NAME="$stored"; fi
                 say "  continuing with the existing bot in $DIR"
                 ;;
         esac
+    fi
+
+    if [ "$reusing" -eq 1 ]; then
+        # Keep the name the running bot already uses.
+        PM2_NAME="${PM2_NAME:-$BOT_NAME}"
+    else
+        ask "Bot name (also the pm2 service name):" "$BOT_NAME"
+        BOT_NAME="${REPLY:-$BOT_NAME}"
+        PM2_NAME="$(next_free_pm2_name "$BOT_NAME")"
+        if [ "$PM2_NAME" != "$BOT_NAME" ]; then
+            say "  $BOT_NAME is already taken — this bot will run as $PM2_NAME"
+        fi
     fi
 
     if [ -z "$OWNER_NUMBER" ] && [ -n "$file" ] && [ "$DIR" = "$(dirname "$file")" ]; then
@@ -344,6 +375,7 @@ collect_inputs() {
     say ""
     say "installing now — this takes a few minutes:"
     say "  dir:     $DIR"
+    say "  name:    $PM2_NAME"
     if [ -n "$OWNER_NUMBER" ]; then say "  owner:   $OWNER_NUMBER"; fi
     if [ -n "$SESSION_ID" ]; then say "  session: ${SESSION_ID:0:12}…"; fi
     say ""
@@ -392,6 +424,9 @@ configure() {
         SESSION_ID="$REPLY"
     fi
 
+    if [ -n "$BOT_NAME" ]; then
+        set_env BOT_NAME "$BOT_NAME"
+    fi
     if [ -n "$OWNER_NUMBER" ]; then
         set_env OWNER_NUMBER "$(printf '%s' "$OWNER_NUMBER" | tr -cd '0-9')"
     fi
@@ -428,6 +463,16 @@ configure() {
 
 # ── start ────────────────────────────────────────────────────────────────
 start_bot() {
+    # Never delete a pm2 app that belongs to another directory/bot.
+    local existing_cwd
+    existing_cwd="$(pm2 describe "$PM2_NAME" 2>/dev/null | awk -F'│' '/exec cwd/{gsub(/^ +| +$/,"",$3); print $3}')"
+    if [ -n "$existing_cwd" ] && [ "$existing_cwd" != "$DIR" ]; then
+        local replacement
+        replacement="$(next_free_pm2_name "$PM2_NAME")"
+        warn "$PM2_NAME already runs $existing_cwd — using $replacement instead"
+        PM2_NAME="$replacement"
+    fi
+
     info "starting $PM2_NAME under pm2"
     pm2 delete "$PM2_NAME" >>"$LOG_FILE" 2>&1 || true
     pm2 start npm --name "$PM2_NAME" --cwd "$DIR" -- start >>"$LOG_FILE" 2>&1 || die "pm2 start failed"

@@ -295,10 +295,40 @@ collect_inputs() {
         file="$DIR/.env"
     fi
 
-    if [ -z "$OWNER_NUMBER" ] && [ -n "$file" ]; then
+    # An existing config means this box already runs a bot for someone. Ask
+    # before touching it: reusing it silently was how a deploy for a new client
+    # ended up pointed at the previous client's number and session.
+    if [ -n "$file" ] && [ "$NONINTERACTIVE" -ne 1 ] && [ -t 0 ]; then
+        local had_number had_session
+        had_number="$(read_config_value OWNER_NUMBER "$file")"
+        had_session="$(read_config_value SESSION_ID "$file")"
+        say ""
+        say "An existing config was found in $DIR"
+        if [ -n "$had_number" ]; then say "  owner:   $had_number"; fi
+        if [ -n "$had_session" ]; then say "  session: already set"; else say "  session: not set"; fi
+        say ""
+        ask "Continue with this bot, or deploy a NEW one? [c]ontinue / [n]ew:" "c"
+        case "$REPLY" in
+            n|N|new|NEW)
+                # A new bot needs its own directory: sharing one would share the
+                # session folder and the two accounts would fight over it.
+                local suggested="${DIR}-new"
+                ask "Directory for the new bot:" "$suggested"
+                DIR="$REPLY"
+                OWNER_NUMBER=""
+                SESSION_ID=""
+                say "  new bot will be installed in $DIR"
+                ;;
+            *)
+                say "  continuing with the existing bot in $DIR"
+                ;;
+        esac
+    fi
+
+    if [ -z "$OWNER_NUMBER" ] && [ -n "$file" ] && [ "$DIR" = "$(dirname "$file")" ]; then
         OWNER_NUMBER="$(read_config_value OWNER_NUMBER "$file")"
     fi
-    if [ -z "$SESSION_ID" ] && [ -n "$file" ]; then
+    if [ -z "$SESSION_ID" ] && [ -n "$file" ] && [ "$DIR" = "$(dirname "$file")" ]; then
         SESSION_ID="$(read_config_value SESSION_ID "$file")"
     fi
 

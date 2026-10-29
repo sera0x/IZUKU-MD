@@ -245,11 +245,24 @@ fetch_code() {
 }
 
 install_deps() {
-    info "installing npm dependencies (postinstall also builds dist/)"
+    info "installing dependencies with ${IZUKU_PM:-npm} (postinstall also builds dist/)"
     # tsc does not delete output for sources that were removed, so a stale dist/
     # keeps loading old command files ("Duplicate command: setgcpp"). Build clean.
     rm -rf dist
-    if ! npm install --no-audit --no-fund --prefer-offline --no-progress >>"$LOG_FILE" 2>&1; then
+
+    # npm is the safe default (native modules build the same way as production).
+    # IZUKU_PM=bun is much faster but relies on bun's node-gyp fallback.
+    local installed=0
+    if [ "${IZUKU_PM:-npm}" = "bun" ] && have bun; then
+        info "using bun install (fast path)"
+        if bun install --frozen-lockfile >>"$LOG_FILE" 2>&1 || bun install >>"$LOG_FILE" 2>&1; then
+            installed=1
+        else
+            warn "bun install failed — falling back to npm"
+        fi
+    fi
+
+    if [ "$installed" -eq 0 ] && ! npm install --no-audit --no-fund --prefer-offline --no-progress >>"$LOG_FILE" 2>&1; then
         warn "npm install failed — retrying after installing build tools"
         case "$PKG" in
             apt)    run_priv apt-get install -y build-essential python3 >>"$LOG_FILE" 2>&1 ;;
@@ -282,6 +295,15 @@ read_config_value() {
     local file="${2:-config.env}"
     [ -f "$file" ] || return 0
     sed -n "s/^$1=//p" "$file" | head -1
+}
+
+# A relative --dir like "izuku-plain" breaks pm2 --cwd and config lookups later,
+# so resolve it against the current directory once, up front.
+resolve_dir() {
+    case "$1" in
+        /*) printf '%s' "$1" ;;
+        *) printf '%s/%s' "$(pwd)" "$1" ;;
+    esac
 }
 
 pm2_name_taken() {
@@ -494,6 +516,7 @@ main() {
     : >"$LOG_FILE"
     parse_args "$@"
     say "IZUKU-MD installer"
+    DIR="$(resolve_dir "$DIR")"
     detect_os
     if [ "$(id -u)" -ne 0 ] && [ "$OS_TYPE" != "termux" ]; then
         if have sudo; then PRIV="sudo"; else PRIV=""; fi

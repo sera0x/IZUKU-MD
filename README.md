@@ -35,7 +35,7 @@ That's it. Everything else is optional.
 ```
 git clone https://github.com/sera0x/IZUKU-MD
 cd IZUKU-MD
-cp .env.example .env   # set OWNER_NUMBER and SESSION_ID
+cp config.env.example config.env   # set OWNER_NUMBER and SESSION_ID
 npm install            # or bun install
 npm start              # or bun index.js
 ```

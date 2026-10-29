@@ -120,7 +120,8 @@ const setters: Record<string, (value: string) => string> = {
         const b64 = /^[A-Za-z0-9+/=\s]+$/
         if (!short.test(token) && !b64.test(token)) throw new Error('SESSION_ID must be a pair-server token or base64 session')
         config.sessionId = token
-        const envPath = process.env.ENV_PATH || path.resolve(process.cwd(), '.env')
+        const configEnv = path.resolve(process.cwd(), 'config.env')
+        const envPath = process.env.ENV_PATH || (fs.existsSync(configEnv) ? configEnv : path.resolve(process.cwd(), '.env'))
         let env = ''
         try { env = fs.readFileSync(envPath, 'utf-8') } catch { env = '' }
         const line = 'SESSION_ID=' + token

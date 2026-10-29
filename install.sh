@@ -72,8 +72,13 @@ fi
 echo "✅ dependencies installed"
 
 # ── 4. config ────────────────────────────────────────────────────────────
-if [ ! -f .env ]; then
-    cp config.env.example .env 2>/dev/null || cp .env.example .env
+# config.env is the current name; migrate an existing .env instead of
+# overwriting someone's settings.
+if [ ! -f config.env ] && [ -f .env ]; then
+    mv .env config.env
+fi
+if [ ! -f config.env ]; then
+    cp config.env.example config.env 2>/dev/null || cp .env.example config.env
 fi
 
 set_env() {
@@ -82,7 +87,7 @@ set_env() {
         index($0, k "=") == 1 { print k "=" v; found = 1; next }
         { print }
         END { if (!found) print k "=" v }
-    ' .env > .env.izuku-tmp && mv .env.izuku-tmp .env
+    ' config.env > config.env.izuku-tmp && mv config.env.izuku-tmp config.env
 }
 
 if [ -n "$NUM" ]; then set_env OWNER_NUMBER "$NUM"; fi
@@ -92,8 +97,14 @@ elif [ -n "$NUM" ]; then
     set_env PAIRING_NUMBER "$NUM"
 fi
 
+# Short IZUKU-XXXXXXXXXXXX ids are resolved through the pairing site, so the
+# bot needs its address to turn the id into credentials.
+if ! grep -qE '^PAIR_SERVER=.+' config.env; then
+    set_env PAIR_SERVER "https://pair.dkit.name.ng"
+fi
+
 # The anchor check compares DEPLOYMENT_KEY with the dkit registry. A stale key
-# in an existing .env makes every boot fail, so keep it in sync when dkit is
+# in an existing config.env makes every boot fail, so keep it in sync when dkit is
 # available on this machine.
 if command -v dkit >/dev/null 2>&1; then
     DKIT_KEY="$(dkit env:get -e "${DKIT_ENV:-production}" DEPLOYMENT_KEY 2>/dev/null | sed -n 's/^DEPLOYMENT_KEY=//p' | head -1)"

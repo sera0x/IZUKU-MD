@@ -6,3 +6,4 @@ data/
 dist/
 legacy/
 *.log
+config.env

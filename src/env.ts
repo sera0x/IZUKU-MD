@@ -1,7 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-export function loadEnvFile(file = resolve(process.cwd(), '.env')): void {
+// config.env is the current name; .env stays supported so an install that has
+// not been renamed yet keeps working.
+const ENV_FILES = ['config.env', '.env']
+
+function defaultEnvFile(): string {
+    for (const name of ENV_FILES) {
+        const file = resolve(process.cwd(), name)
+        if (existsSync(file)) return file
+    }
+    return resolve(process.cwd(), ENV_FILES[0] as string)
+}
+
+export function loadEnvFile(file = defaultEnvFile()): void {
     if (!existsSync(file)) return
 
     for (const rawLine of readFileSync(file, 'utf8').split(/\r?\n/)) {

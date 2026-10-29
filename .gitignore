@@ -1,0 +1,8 @@
+node_modules/
+data/
+*.db
+*.bak*
+.env
+dist/
+legacy/
+*.log

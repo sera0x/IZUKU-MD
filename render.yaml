@@ -1,0 +1,12 @@
+services:
+  - type: worker
+    name: izuku-md
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: OWNER_NUMBER
+        sync: false
+      - key: SESSION_ID
+        sync: false

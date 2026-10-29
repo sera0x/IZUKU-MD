@@ -169,12 +169,23 @@ function createSignalGuard(): {
     return { logger: wrap(base), hits: () => hits, takeFailingJids: () => { const out = [...failing]; failing.clear(); return out } }
 }
 
+/**
+ * A pairing code lives for about a minute. When it expires the bot used to ask
+ * for a fresh one on every reconnect (and every reconnect also re-requested it),
+ * so the terminal filled up with codes and the phone showed "code expired" for
+ * all but the last. One code per two minutes is enough to actually type it in.
+ */
+const PAIRING_CODE_COOLDOWN_MS = 2 * 60_000
+
 export class Bot {
     private sock: WASocket | null = null
     private stopping = false
     private attempts = 0
     private lastFailReason = ''
     private connectedState = false
+    private pairingRequested = false
+    private pairingCodeAt = 0
+    private awaitingPairing = false
 
     constructor(private readonly events: BotEvents) {}
 
@@ -205,7 +216,10 @@ export class Bot {
             // successful connection, assume the session is dead/not connected:
             // wipe auth so it doesn't loop forever, and exit cleanly so PM2
             // doesn't keep thrashing or can be stopped.
-            if (!this.connectedState && this.attempts >= 5) {
+            // While a pairing code is pending, reconnecting is normal: the user
+            // simply has not typed it yet. Exiting here made PM2 restart the bot
+            // and print a brand-new code every few seconds.
+            if (!this.connectedState && this.attempts >= 5 && !this.awaitingPairing) {
                 const stale = /QR refs attempts ended|logged out|Stale session/i.test(this.lastFailReason)
                 log.error(
                     'Not connected after %d attempts. Shutting down%s.',
@@ -320,8 +334,6 @@ export class Bot {
 
 
 
-        let pairingRequested = false
-
         return await new Promise<boolean>((resolve) => {
             sock.ev.on('connection.update', (update: Partial<ConnectionState>) => {
                 const { connection, lastDisconnect, qr } = update
@@ -331,20 +343,35 @@ export class Bot {
 
                     if (!needsPairing) {
                         this.events.onQr?.(qr)
-                    } else if (!pairingRequested) {
-                        pairingRequested = true
-                        void this.requestPairingCode(sock).catch((error: Error) => {
-                            pairingRequested = false
-                            log.error('Pairing code request failed: %s', error.message)
-                            log.warn('Switching to QR login — scan the code below instead.')
-                            login.mode = 'qr'
-                            this.events.onQr?.(qr)
-                        })
+                    } else {
+                        const now = Date.now()
+                        const due = !this.pairingRequested || now - this.pairingCodeAt > PAIRING_CODE_COOLDOWN_MS
+                        if (due) {
+                            const reissue = this.pairingCodeAt > 0
+                            this.pairingRequested = true
+                            this.awaitingPairing = true
+                            void this.requestPairingCode(sock)
+                                .then(() => {
+                                    this.pairingCodeAt = Date.now()
+                                    if (reissue) log.warn('The previous code expired — use the new one above.')
+                                })
+                                .catch((error: Error) => {
+                                    this.pairingRequested = false
+                                    this.awaitingPairing = false
+                                    log.error('Pairing code request failed: %s', error.message)
+                                    log.warn('Switching to QR login — scan the code below instead.')
+                                    login.mode = 'qr'
+                                    this.events.onQr?.(qr)
+                                })
+                        }
                     }
                 }
 
                 if (connection === 'open') {
                     this.attempts = 0
+                    this.awaitingPairing = false
+                    this.pairingRequested = false
+                    this.pairingCodeAt = 0
                     this.connectedState = true
                     log.info('Connected to WhatsApp as %s', sock.user?.id ?? 'unknown')
                     // First-run greeting: once per successful link (qr or pair
@@ -416,6 +443,6 @@ export class Bot {
         log.info('')
         log.info('On your phone: WhatsApp > Settings > Linked devices > Link a device')
         log.info('Tap "Link with phone number instead" and enter the code above.')
-        log.info('Waiting for you to approve it…')
+        log.info('Enter this code — it is only valid for about a minute. A new one is not requested for another two minutes, so no code spam.')
     }
 }

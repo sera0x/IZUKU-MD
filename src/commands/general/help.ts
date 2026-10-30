@@ -9,8 +9,28 @@ import type { Category, Command } from '../../bot/types.js'
 
 const ORDER: Category[] = ['general', 'group', 'tools', 'media', 'fun', 'games', 'afk', 'owner']
 
+// Pokemon commands, listed next to the arena pair so the games section is not
+// empty until someone opens it with .agb poke in that group.
+const POKEMON_NAMES = [
+    'pspawn',
+    'catch',
+    'pokedeck',
+    'pokecollection',
+    'pokebattle',
+    'pinfo',
+    'pstart',
+    'pswap',
+    'pcrelease',
+    'prelease',
+    'plearn',
+    'move',
+    'ptop',
+    'pokesearch',
+    'quest',
+]
+
 // The arena pair is always on: it needs no group activation and works in DMs.
-const ALWAYS_ON_GAMES = new Set(['ttt', 'tictactoe', 'wcg', 'wordchain'])
+const ALWAYS_ON_GAMES = new Set(['ttt', 'tictactoe', 'wcg', 'wordchain', ...POKEMON_NAMES])
 
 // Some legacy theme URLs are dead or reject hotlinking. Skip a failed image
 // for a while and try the theme's next picture instead of falling back to text.

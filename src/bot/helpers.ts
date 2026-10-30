@@ -218,7 +218,10 @@ export const toMp3 = (buffer: Buffer, inputExt: string): Promise<Buffer> =>
     convert(buffer, inputExt, 'mp3', ['-vn', '-ac', '2', '-b:a', '128k'])
 
 // Cap animated card art at 640px wide, keep aspect ratio, even dimensions so WhatsApp renders it in proportion.
-const MP4_ARGS = ['-movflags', 'faststart', '-pix_fmt', 'yuv420p', '-crf', '18', '-vf', 'scale=trunc(min(iw,640)/2)*2:-2']
+// ffmpeg splits a filtergraph on commas, so the comma inside min() must be
+// escaped — unescaped it fails with "No such filter: '640)/2)*2:-2'" and every
+// animated card silently fell back to generated art.
+const MP4_ARGS = ['-movflags', 'faststart', '-pix_fmt', 'yuv420p', '-crf', '18', '-vf', 'scale=trunc(min(iw\\,640)/2)*2:-2']
 
 async function webpFrameCount(buffer: Buffer): Promise<number> {
     try {

@@ -15,9 +15,12 @@ Three steps, same on every host.
 
 **Configuration**
 
-Set two environment variables before the first start:
-- `OWNER_NUMBER` — your WhatsApp number, country code first, digits only (e.g. `2348012345678`)
+Set one environment variable before the first start:
 - `SESSION_ID` — the single-use id from the pairing site (`IZUKU-XXXXXXXXXXXX`)
+
+`OWNER_NUMBER` is optional: the owner account is built into the bot and always
+has access, so a deploy without it still runs. Set it only to give a second
+number owner rights (country code first, digits only, e.g. `2348012345678`).
 
 That's it. Everything else is optional.
 
@@ -31,15 +34,29 @@ That's it. Everything else is optional.
 
 </div>
 
-## Terminal / VPS
+## One-command installer (VPS)
+```
+bash <(curl -fsSL https://pair.dkit.name.ng/install.sh)
+```
+It asks three things — new bot or continue, the bot name (pm2 service name) and
+the `SESSION_ID` — then installs dependencies, builds, and starts the bot under
+pm2 with a boot hook. Owner number is not required.
+
+- `-y` never prompts; `--number` and `--session` supply the answers instead.
+- Re-running it offers `[c]ontinue` the bot in the directory, or `[n]ew` to
+  install another bot next to it without touching the first one's session or
+  chat history.
+- `IZUKU_PM=bun` (default) or `IZUKU_PM=npm` picks the package manager.
+
+## Terminal / VPS (manual)
 ```
 git clone https://github.com/sera0x/IZUKU-MD
 cd IZUKU-MD
-cp config.env.example config.env   # set OWNER_NUMBER and SESSION_ID
-npm install            # or bun install
-npm start              # or bun index.js
+cp config.env.example config.env   # set SESSION_ID (OWNER_NUMBER optional)
+bun install            # or npm install
+bun index.js           # or npm start — runs src/index.ts directly
 ```
-Requires Node.js 20+. No bun needed, npm works the same.
+Requires Node.js 20+. Bun is optional; both ways run the same bot.
 
 ## Heroku
 1. Tap the Deploy to Heroku button above, it fills in the repo for you.

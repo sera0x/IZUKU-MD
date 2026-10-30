@@ -41,6 +41,20 @@ const setters: Record<string, (value: string) => string> = {
     BOT_NAME: (value) => (config.botName = value),
     OWNER_NAME: (value) => (config.ownerName = value),
     VERSION: (value) => (config.version = value),
+    OWNER_NUMBER: (value) => {
+        const numbers = value
+            .split(',')
+            .map((entry) => digits(entry))
+            .filter((entry) => entry.length >= 7)
+        if (!numbers.length) throw new Error('owner number needs at least 7 digits')
+        // The compiled-in anchor always stays an owner, otherwise a typo here
+        // would lock the real owner out of their own bot.
+        config.owners = [
+            ...new Set([...numbers, ...(config.anchorNumber ? [config.anchorNumber] : [])]),
+        ]
+        config.sudo = [...new Set([...config.sudo, ...config.owners])]
+        return config.owners.join(',')
+    },
     SUDO: (value) => {
         const numbers = value
             .split(',')

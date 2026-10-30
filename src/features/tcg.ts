@@ -658,9 +658,12 @@ export function cardDropCaption(card: Card, prefix: string): string {
     const price = cardPrice(card)
     const top = copies <= 10
     const lines = [
-        '🟢 *CARD SPAWN*',
-        `🍃 *${card.name}* \u00b7 ${card.series}`,
-        `\u26A1 Tier ${card.tier ?? '?'} \u00b7 ${style.dot} ${style.label}${top ? ' \u00b7 top 10 copy' : ''} \u00b7 💰 ${price} \u00b7 copy #${copies}`,
+        `🃏 *CARD SPAWN*  \u00b7  ${style.dot} ${style.label}`,
+        '━━━━━━━━━━━━━━━━━━━━',
+        `🎴 *${card.name}*`,
+        `📺 ${card.series}  \u00b7  ⚡ Tier ${card.tier ?? '?'}`,
+        `💰 Value: ${price}  \u00b7  📦 Copy #${copies}${top ? '  \u00b7  🏅 Top 10' : ''}`,
+        '━━━━━━━━━━━━━━━━━━━━',
         `\u25B8 *${prefix}claim* to take it`,
     ]
     return lines.join('\n')
@@ -777,9 +780,15 @@ async function cachedArt(dir: string, id: string): Promise<CardArt | undefined> 
         if (format === 'mp4') return { buffer, animated: true }
 
         if (format === 'gif' || (format === 'webp' && (await hasAnimation(buffer)))) {
-            const mp4 = await animatedMp4(buffer, format)
-            writeFileSync(join(dir, `${id}.mp4`), mp4)
-            return { buffer: mp4, animated: true }
+            // If ffmpeg cannot convert, still deliver the real artwork instead of
+            // letting the caller fall through to the generated placeholder card.
+            try {
+                const mp4 = await animatedMp4(buffer, format)
+                writeFileSync(join(dir, `${id}.mp4`), mp4)
+                return { buffer: mp4, animated: true }
+            } catch {
+                return { buffer, animated: false }
+            }
         }
 
         return { buffer, animated: false }
@@ -875,11 +884,17 @@ export async function cardArt(card: Card): Promise<CardArt> {
 
                 if (format === 'gif' || (format === 'webp' && (await hasAnimation(buffer)))) {
                     writeFileSync(join(dir, `${card.id}.${format}`), buffer)
-                    const mp4 = await animatedMp4(buffer, format)
-                    writeFileSync(join(dir, `${card.id}.mp4`), mp4)
-                    const art = { buffer: mp4, animated: true }
-                    artCache.set(card.id, art)
-                    return art
+                    try {
+                        const mp4 = await animatedMp4(buffer, format)
+                        writeFileSync(join(dir, `${card.id}.mp4`), mp4)
+                        const art = { buffer: mp4, animated: true }
+                        artCache.set(card.id, art)
+                        return art
+                    } catch {
+                        // Real art beats the placeholder even if it is not animated.
+                        void backupCardArt(card.id, buffer, format)
+                        return { buffer, animated: false }
+                    }
                 }
 
                 // Static art stays transparent and is pulled live: no

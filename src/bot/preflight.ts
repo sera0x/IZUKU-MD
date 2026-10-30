@@ -6,7 +6,7 @@ import { config } from '../config.ts'
 // Anti-clone anchor: a clone of this project must prove itself against the
 // owner's dkit registry (RUNTIME_PROFILE must equal the sealed anchor and
 // DEPLOYMENT_KEY must match). Cloners have no dkit access, so they fail.
-//
+
 // Rate limiting: a passing check is written to data/preflight.ok and trusted
 // for RECHECK_MS. pm2 restarts, crash loops and reboots therefore do not touch
 // the registry at all; it is contacted at most once every six hours. If it is
@@ -48,7 +48,7 @@ function remote(key: string): { value: string; reachable: boolean } {
             stdio: ['ignore', 'pipe', 'ignore'],
         })
         const line = output.split(/\r?\n/).find((entry) => entry.startsWith(`${key}=`))
-        if (!line) return { value: '', reachable: false } // no value: treat as unreachable so the pass-file fallback applies
+        if (!line) return { value: '', reachable: false }
         return { value: line.slice(key.length + 1).trim(), reachable: true }
     } catch {
         return { value: '', reachable: false }
@@ -80,8 +80,14 @@ export function runPreflight(): void {
 
     const localKey = (process.env.DEPLOYMENT_KEY ?? '').trim()
     const expected = remote('DEPLOYMENT_KEY')
-    if (expected.reachable && (!localKey || expected.value !== localKey)) {
+    if (expected.reachable && localKey && expected.value !== localKey) {
         fail('DEPLOYMENT_KEY does not match the dkit registry (dkit env:get -e production DEPLOYMENT_KEY)')
+    }
+    // No DEPLOYMENT_KEY in config.env? The installer syncs it, but a plain
+    // `git clone` never does. The registry answered and RUNTIME_PROFILE already
+    // matched, so adopt its value instead of refusing to boot.
+    if (expected.reachable && !localKey) {
+        process.env.DEPLOYMENT_KEY = expected.value
     }
 
     if (profile.reachable && expected.reachable) {
@@ -90,7 +96,11 @@ export function runPreflight(): void {
     }
 
     // Registry unreachable (rate limit or network): a pass younger than the TTL
-    // keeps this machine running. No pass file, no start.
+    // keeps this machine running.
     if (age !== null && age < PASS_TTL_MS) return
+
+    // When dkit is not installed there is nothing to compare against — a bare
+    // `git clone && bun install && bun index.js` deployment cannot validate the
+    // sealed anchor and must exit rather than start with a mismatched profile.
     fail('dkit registry unreachable and no recent successful check')
 }

@@ -90,12 +90,13 @@ const setters: Record<string, (value: string) => string> = {
     },
     ANTI_DELETE: (value) => {
         const requested = value.trim().toLowerCase()
-        // `sudo` used to forward recovered messages to every sudo user. That
-        // leaked private chats, so legacy values now behave like `same`.
-        const mode: 'off' | 'same' | 'bot' | 'jid' =
-            requested === 'sudo' ? 'same' : (requested as 'off' | 'same' | 'bot' | 'jid')
-        if (!['off', 'same', 'bot', 'jid'].includes(mode)) {
-            throw new Error('anti-delete mode must be off, same, bot or jid')
+        // `sudo` and `bot` used to forward recovered messages to sudo users or
+        // to the owner chat. Both filled an inbox with other people's deleted
+        // chats, so legacy values now behave like `same`.
+        const mode: 'off' | 'same' | 'jid' =
+            requested === 'sudo' || requested === 'bot' ? 'same' : (requested as 'off' | 'same' | 'jid')
+        if (!['off', 'same', 'jid'].includes(mode)) {
+            throw new Error('anti-delete mode must be off, same or jid')
         }
         config.antiDelete.mode = mode
         return mode

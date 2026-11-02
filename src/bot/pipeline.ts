@@ -13,7 +13,7 @@ import { clearPrompt, handlePrompt } from '../features/prompts.js'
 
 import { rememberStatus } from '../features/status-store.js'
 import { handleStatusView } from '../features/status-view.js'
-import { handleAntiDelete, markBotDelete, noteOwnerChat } from '../features/antidelete.js'
+import { handleAntiDelete, markBotDelete } from '../features/antidelete.js'
 import { rememberMessage } from '../features/message-store.js'
 import { stickerCommand } from '../features/sticker-triggers.js'
 import { bareTttCommand } from '../features/tictactoe.js'
@@ -198,10 +198,6 @@ function pushNameOf(sock: WASocket, msg: WAMessage): string {
 export async function processMessage(sock: WASocket, msg: WAMessage): Promise<void> {
     const remoteJid = msg.key.remoteJid
     if (!remoteJid || !msg.message) return
-
-    // Remember the owner's real DM jid (handles @lid sessions) so bot-mode
-    // antidelete always has a resolvable destination.
-    if (!remoteJid.endsWith('@g.us')) noteOwnerChat(msg.key.participant ?? remoteJid, remoteJid)
 
     // Message log (fire-and-forget), placed before every early return below so
     // group and private messages are logged regardless of the path they take.

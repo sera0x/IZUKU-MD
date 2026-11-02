@@ -149,14 +149,13 @@ const config = {
     },
 
     antiDelete: {
-        // off | same | bot | jid — legacy `sudo` is treated as `same` because
-        // forwarding to every sudo user leaked private chats. `bot` sends
-        // every recovery to the owner chat (the same chat the startup
-        // message goes to) instead of the chat where the delete happened.
-        mode: ((): 'off' | 'same' | 'bot' | 'jid' => {
+        // off | same | jid. Legacy `sudo` and `bot` both mean `same` now:
+        // forwarding recoveries to sudo users or to the owner chat filled
+        // somebody's inbox with other people's deleted chats. Recovery stays
+        // in the chat the message was deleted from, or goes to ANTI_DELETE_JID.
+        mode: ((): 'off' | 'same' | 'jid' => {
             const mode = text(process.env.ANTI_DELETE, 'off').toLowerCase()
-            if (mode === 'sudo') return 'same'
-            return mode === 'same' || mode === 'bot' || mode === 'jid' ? mode : 'off'
+            return mode === 'same' || mode === 'jid' ? mode : 'off'
         })(),
         jid: digits(process.env.ANTI_DELETE_JID),
         // Deleted statuses are forwarded to the bot's own number, never to the

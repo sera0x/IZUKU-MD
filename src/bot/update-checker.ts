@@ -135,9 +135,39 @@ async function step(command: string, args: string[]): Promise<{ ok: boolean; out
 export async function applyUpdate(): Promise<UpdateRun> {
     const logLines: string[] = []
 
+    // Deployments usually carry local edits: a hand-applied patch, a config
+    // tweak made in place. `git pull --ff-only` refuses to touch any of them
+    // and aborts the whole update, so move them aside first and put them back
+    // afterwards instead of making the owner clean the tree by hand.
+    const status = await step('git', ['status', '--porcelain'])
+    const dirty = status.ok && status.output.trim().length > 0
+    if (dirty) {
+        const stash = await step('git', ['stash', 'push', '--include-untracked', '-m', `izuku-update-${Date.now()}`])
+        logLines.push(`$ git stash push --include-untracked\n${stash.output.slice(-400)}`)
+        if (!stash.ok) return { ok: false, output: logLines.join('\n\n') }
+    }
+
     const pull = await step('git', ['pull', '--ff-only'])
     logLines.push(`$ git pull\n${pull.output.slice(-600)}`)
-    if (!pull.ok) return { ok: false, output: logLines.join('\n\n') }
+    if (!pull.ok) {
+        if (dirty) {
+            const back = await step('git', ['stash', 'pop'])
+            logLines.push(`$ git stash pop\n${back.output.slice(-400)}`)
+        }
+        return { ok: false, output: logLines.join('\n\n') }
+    }
+
+    if (dirty) {
+        const pop = await step('git', ['stash', 'pop'])
+        logLines.push(`$ git stash pop\n${pop.output.slice(-600)}`)
+        if (!pop.ok) {
+            // The pulled build already contains these edits, or they conflict
+            // with it. Clear the half-merged working tree and leave the stash in
+            // place so nothing the owner wrote is ever thrown away.
+            await step('git', ['checkout', '--', '.'])
+            logLines.push('Local edits were kept in a stash — reapply with `git stash pop`.')
+        }
+    }
 
     const install = await step('npm', ['install', '--no-audit', '--no-fund'])
     logLines.push(`$ npm install\n${install.output.slice(-900)}`)

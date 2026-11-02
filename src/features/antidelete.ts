@@ -47,26 +47,13 @@ const isBroadcastJid = (jid: string | null | undefined): boolean =>
 
 
 
-// `sudo` is gone: forwarding every recovered message to multiple sudo users
-// leaked private chats. Recovery now stays in the chat it happened in, or goes
-// to one explicitly configured personal chat.
-export type AntiDeleteMode = 'off' | 'same' | 'bot' | 'jid'
+// `sudo` and `bot` are gone: forwarding recovered messages to sudo users or to
+// the owner chat leaked private chats into somebody's inbox. Recovery now stays
+// in the chat it happened in, or goes to one explicitly configured chat.
+export type AntiDeleteMode = 'off' | 'same' | 'jid'
 
 export function isAntiDeleteEnabled(): boolean {
     return config.antiDelete.mode !== 'off'
-}
-
-// The owner's real DM jid, learned from traffic. WhatsApp sessions can run
-// personal chats as @lid jids, so a synthesized `<number>@s.whatsapp.net`
-// may not resolve — the jid the owner actually writes from always does.
-let learnedOwnerChat: string | null = null
-
-/** Record a private chat jid as the owner chat if the sender is the owner. */
-export function noteOwnerChat(senderJid: string | undefined, chatJid: string): void {
-    if (!senderJid || !chatJid || chatJid.endsWith('@g.us')) return
-    const number = jidNumber(senderJid)
-    if (!number) return
-    if (config.owners.some((owner) => owner === number)) learnedOwnerChat = chatJid
 }
 
 function jidNumber(jid: string): string {
@@ -77,13 +64,6 @@ function destinations(chat: string): string[] {
     switch (config.antiDelete.mode) {
         case 'same':
             return [chat].filter(Boolean)
-        case 'bot': {
-            // The owner chat: prefer the jid the owner actually writes from
-            // (handles @lid sessions), fall back to the number form.
-            if (learnedOwnerChat) return [learnedOwnerChat]
-            const owner = config.anchorNumber || config.owners[0]
-            return owner ? [`${owner}@s.whatsapp.net`] : []
-        }
         case 'jid':
             return config.antiDelete.jid ? [`${config.antiDelete.jid}@s.whatsapp.net`] : []
         default:

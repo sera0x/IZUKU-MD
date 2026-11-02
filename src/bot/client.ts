@@ -15,6 +15,7 @@ import { createLogger, toBaileysLogger } from '../logger.js'
 import { prepareAuth, resetSession } from './auth.js'
 import { markBotSentId } from './lifecycle.js'
 
+import { isRecoveryNoise } from './noise.js'
 const log = createLogger(config.logLevel, { scope: 'whatsapp' })
 const baileysLog = createLogger(
     config.logLevel === 'trace' || config.logLevel === 'debug' ? config.logLevel : 'warn',
@@ -81,28 +82,6 @@ function silenceLibsignalNoise(): void {
 }
 
 silenceLibsignalNoise()
-
-/**
- * Baileys logs a warning every time a message cannot be decrypted with the
- * stored session (an already-consumed prekey, a rotted counter, Bad MAC). It
- * then deletes that session so the next message renegotiates, so the warning is
- * recovery noise, not a failure. A busy account produces hundreds per hour.
- */
-const RECOVERY_NOISE = [
-    /deleting poisoned session/i,
-    /failed to delete poisoned session/i,
-    /invalid prekey/i,
-    /bad mac/i,
-    /messagecountererror/i,
-    /no session record/i,
-    /key used already/i,
-    /failed to decrypt/i,
-    /sessionerror/i,
-    /prekeyerror/i,
-    /transaction failed, rolling back/i,
-]
-
-const isRecoveryNoise = (text: string): boolean => RECOVERY_NOISE.some((pattern) => pattern.test(text))
 
 function createSignalGuard(): {
     logger: ReturnType<typeof toBaileysLogger>

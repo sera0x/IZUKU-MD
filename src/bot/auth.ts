@@ -5,6 +5,7 @@ import { makeCacheableSignalKeyStore, useMultiFileAuthState, type Authentication
 import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
 import { hardenPermissions, loadCreds, migrateCreds, writeCreds } from './vault.js'
+import { createQuietBaileysLogger } from './noise.js'
 
 const log = createLogger(config.logLevel, { scope: 'auth' })
 
@@ -154,7 +155,7 @@ export async function prepareAuth(): Promise<PreparedAuth> {
     return {
         state: {
             creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, undefined),
+            keys: makeCacheableSignalKeyStore(state.keys, createQuietBaileysLogger()),
         },
         saveCreds: async () => writeCreds(state.creds),
     }

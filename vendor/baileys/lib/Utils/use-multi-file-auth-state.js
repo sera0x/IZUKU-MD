@@ -1,5 +1,5 @@
 import { Mutex } from 'async-mutex';
-import { mkdir, readFile, stat, unlink, writeFile } from 'fs/promises';
+import { mkdir, open, readFile, rename, stat, unlink } from 'fs/promises';
 import { join } from 'path';
 import { proto } from '../../WAProto/index.js';
 import { initAuthCreds } from './auth-utils.js';
@@ -32,7 +32,21 @@ export const useMultiFileAuthState = async (folder) => {
         const mutex = getFileLock(filePath);
         return mutex.acquire().then(async (release) => {
             try {
-                await writeFile(filePath, JSON.stringify(data, BufferJSON.replacer));
+                // __IZUKU_ATOMIC_KEYS__: write to a temp file, flush it, then
+                // rename over the real one. A direct writeFile interrupted by a
+                // restart leaves a truncated file, which parses as null and
+                // silently drops the session — every later message from that
+                // chat then fails as PreKeyError until it is deleted by hand.
+                const tmp = `${filePath}.tmp`;
+                const handle = await open(tmp, 'w');
+                try {
+                    await handle.writeFile(JSON.stringify(data, BufferJSON.replacer));
+                    await handle.sync();
+                }
+                finally {
+                    await handle.close();
+                }
+                await rename(tmp, filePath);
             }
             finally {
                 release();
@@ -54,6 +68,15 @@ export const useMultiFileAuthState = async (folder) => {
             });
         }
         catch (error) {
+            // A missing file is normal: that key has not been written yet.
+            // Anything else means the key file is truncated or unreadable, and
+            // returning null would drop the session for good. Move it aside so
+            // the next message renegotiates instead of failing forever.
+            if (error?.code !== 'ENOENT') {
+                const broken = join(folder, fixFileName(file));
+                await rename(broken, `${broken}.corrupt-${Date.now()}`).catch(() => { });
+                console.warn(`[session] dropped unreadable key ${fixFileName(file)} (${error?.message ?? error})`);
+            }
             return null;
         }
     };

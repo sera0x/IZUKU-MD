@@ -98,6 +98,8 @@ const RECOVERY_NOISE = [
     /key used already/i,
     /failed to decrypt/i,
     /sessionerror/i,
+    /prekeyerror/i,
+    /transaction failed, rolling back/i,
 ]
 
 const isRecoveryNoise = (text: string): boolean => RECOVERY_NOISE.some((pattern) => pattern.test(text))
@@ -116,7 +118,15 @@ function createSignalGuard(): {
 
     const note = (text: string): void => {
         const t = text.toLowerCase()
-        if (!t.includes('bad mac') && !t.includes('failed to decrypt') && !t.includes('invalid prekey') && !t.includes('sessionerror')) return
+        if (
+            !t.includes('bad mac') &&
+            !t.includes('failed to decrypt') &&
+            !t.includes('invalid prekey') &&
+            !t.includes('prekeyerror') &&
+            !t.includes('sessionerror') &&
+            !t.includes('transaction failed, rolling back')
+        )
+            return
         hits += 1
         if (hits === 1) log.warn('Bad MAC detected — will auto-reset stale sessions.')
         // Pull the failing chat's jids out of the baileys error payload so we

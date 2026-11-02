@@ -6,7 +6,7 @@ import { quotedStickerHash } from '../../features/sticker-triggers.js'
 const shortHash = (hash: string): string => hash.slice(0, 8)
 
 ari({
-    name: 'setsticker',
+    name: 'setcmd',
     description: 'Bind a sticker to a command',
     category: 'tools',
     aliases: ['stickercommand', 'stickercmd'],

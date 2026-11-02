@@ -270,7 +270,7 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     // digit during a live match all reach the command as if `.ttt` was typed.
     const bareGame = isCommand ? null : bareTttCommand(chat, body)
 
-    // Owner-created sticker shortcuts. A sticker bound with `.setsticker save`
+    // Owner-created sticker shortcuts. A sticker bound with `.setcmd save`
     // runs that command as if the owner had typed it, while still carrying the
     // sticker message so reply-based commands can see the quoted media.
     const stickerTrigger = !isCommand && !bareGame && isOwner ? stickerCommand(msg) : ''

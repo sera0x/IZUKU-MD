@@ -108,6 +108,7 @@ function createSignalGuard(): {
     logger: ReturnType<typeof toBaileysLogger>
     hits: () => number
     takeFailingJids: () => string[]
+    setFailingHandler: (fn: ((jids: string[]) => void) | null) => void
 } {
     const base = toBaileysLogger(baileysLog)
     let hits = 0
@@ -115,6 +116,27 @@ function createSignalGuard(): {
     let lastSummary = Date.now()
 
     const failing = new Set<string>()
+
+    let onFailing: ((jids: string[]) => void) | null = null
+    let scheduled = false
+
+    const flush = (): void => {
+        scheduled = false
+        if (!onFailing || !failing.size) return
+        const out = [...failing]
+        failing.clear()
+        try {
+            onFailing(out)
+        } catch (error) {
+            log.debug('failing-jid handler error: %s', (error as Error).message)
+        }
+    }
+
+    const schedule = (): void => {
+        if (scheduled) return
+        scheduled = true
+        queueMicrotask(flush)
+    }
 
     const note = (text: string): void => {
         const t = text.toLowerCase()
@@ -137,7 +159,10 @@ function createSignalGuard(): {
         const jid = text.match(/"jid":"([^"]+)"/)?.[1]
         const fromMe = /"fromMe":true/.test(text)
         const target = fromMe ? null : (participant ?? remote ?? jid)
-        if (target) failing.add(target)
+        if (target) {
+            failing.add(target)
+            schedule()
+        }
     }
 
     // One line every few minutes instead of one per dropped status/lid message.
@@ -178,7 +203,19 @@ function createSignalGuard(): {
         },
     })
 
-    return { logger: wrap(base), hits: () => hits, takeFailingJids: () => { const out = [...failing]; failing.clear(); return out } }
+    return {
+        logger: wrap(base),
+        hits: () => hits,
+        takeFailingJids: () => {
+            const out = [...failing]
+            failing.clear()
+            return out
+        },
+        setFailingHandler: (fn) => {
+            onFailing = fn
+            if (failing.size) schedule()
+        },
+    }
 }
 
 /**
@@ -336,28 +373,31 @@ export class Bot {
         // delete just that session so the next message renegotiates keys instead
         // of every message from that chat being dropped silently.
         const resetCooldown = new Map<string, number>()
-        const sessionFixer = setInterval(() => {
-            if (!this.connectedState) return
-            const jids = signal.takeFailingJids()
+        const resetSessions = (jids: string[]): void => {
             const repo = (sock as unknown as { signalRepository?: { deleteSession: (jids: string[]) => Promise<void> } }).signalRepository
-            if (jids.length) log.info('decrypt-fail jids: %j, repo: %s', jids, repo ? 'yes' : 'NO')
             if (!repo || !jids.length) return
+            const now = Date.now()
+            const fresh = jids.filter((j: string) => now - (resetCooldown.get(j) ?? 0) > 60_000)
+            if (!fresh.length) return
+            for (const j of fresh) resetCooldown.set(j, now)
             void (async () => {
-                const now = Date.now()
-                const fresh = jids.filter((j: string) => now - (resetCooldown.get(j) ?? 0) > 60_000)
-                if (!fresh.length) return
-                for (const j of fresh) resetCooldown.set(j, now)
                 try {
                     await repo.deleteSession(fresh)
                     log.warn('Reset stale session for: %s', fresh.join(', '))
                 } catch (error) {
                     log.warn('Session reset failed: %s', (error as Error).message)
-                    // Likely our prekeys are stale — refresh them so the next
-                    // incoming prekey message can establish a session.
                     const sockAny = sock as unknown as { uploadPreKeys?: () => Promise<void> }
                     void sockAny.uploadPreKeys?.().catch(() => undefined)
                 }
             })()
+        }
+
+        signal.setFailingHandler(resetSessions)
+        const sessionFixer = setInterval(() => {
+            if (!this.connectedState) return
+            const jids = signal.takeFailingJids()
+            if (jids.length) log.debug('decrypt-fail jids: %j', jids)
+            resetSessions(jids)
         }, 15_000)
 
 

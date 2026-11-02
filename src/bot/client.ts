@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { boldText, isMarkerLog, isStartupBroadcast } from './bold.js'
 import {
     Browsers,
+    DEFAULT_CONNECTION_CONFIG,
     DisconnectReason,
     fetchLatestBaileysVersion,
     makeWASocket,
@@ -23,6 +24,27 @@ const baileysLog = createLogger(
     { scope: 'baileys' },
 )
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+type WaVersion = [number, number, number]
+let cachedWaVersion: WaVersion | null = null
+
+// `fetchLatestBaileysVersion` has no timeout in this fork: when GitHub is slow
+// the socket never gets created, so the bot sits silent for minutes after every
+// start or reconnect. Race it against a short timer and fall back to the
+// bundled version — WhatsApp accepts it, and the socket connects immediately.
+async function resolveWaVersion(): Promise<WaVersion> {
+    if (cachedWaVersion) return cachedWaVersion
+    const fallback = DEFAULT_CONNECTION_CONFIG.version as WaVersion
+    const timeout = new Promise<WaVersion>((resolve) => setTimeout(() => resolve(fallback), 4000))
+    const fetched = await Promise.race([
+        fetchLatestBaileysVersion()
+            .then((result) => (result.version as WaVersion) ?? fallback)
+            .catch(() => fallback),
+        timeout,
+    ])
+    cachedWaVersion = fetched
+    return fetched
+}
 
 export interface BotEvents {
     onSocket: (sock: WASocket) => void
@@ -315,7 +337,7 @@ export class Bot {
         }
         const { state, saveCreds } = prepared
 
-        const { version } = await fetchLatestBaileysVersion()
+        const version = await resolveWaVersion()
         const signal = createSignalGuard()
 
         const sock = makeWASocket({

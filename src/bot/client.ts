@@ -14,6 +14,7 @@ import { db } from '../db/index.js'
 import { createLogger, toBaileysLogger } from '../logger.js'
 import { prepareAuth, resetSession } from './auth.js'
 import { markBotSentId } from './lifecycle.js'
+import { findStoredMessage, getStoredMessage } from '../features/message-store.js'
 
 import { isRecoveryNoise } from './noise.js'
 const log = createLogger(config.logLevel, { scope: 'whatsapp' })
@@ -326,7 +327,24 @@ export class Bot {
             syncFullHistory: false,
             printQRInTerminal: false,
             generateHighQualityLinkPreview: true,
-            getMessage: async () => undefined,
+            // Baileys asks the sender to re-hand a message it could not decrypt.
+            // Answering `undefined` (the old behaviour) left the other side
+            // waiting on WhatsApp to fetch it from a phone, which is the lag
+            // before replies land. Answer from the local message store instead.
+            getMessage: async (key) => {
+                const id = key.id
+                if (!id) return undefined
+                const stored =
+                    (key.remoteJid ? getStoredMessage(key.remoteJid, id) : undefined) ??
+                    findStoredMessage(id)
+                return stored?.message
+            },
+            // Send the retry receipt immediately and allow more rounds: a chat
+            // whose keys rotted then recovers in one round-trip instead of
+            // stalling every other message behind the retry mutex.
+            retryRequestDelayMs: 0,
+            maxMsgRetryCount: 8,
+            enableAutoSessionRecreation: true,
         })
 
         this.sock = sock

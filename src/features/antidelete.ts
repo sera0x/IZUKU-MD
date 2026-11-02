@@ -1,7 +1,7 @@
 import { downloadContentFromMessage, proto, type WASocket, type WAMessage } from 'baileys'
 import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
-import { jidToNumber, unwrapMessage } from '../bot/helpers.js'
+import { jidToNumber, selfChatJid, unwrapMessage } from '../bot/helpers.js'
 import { findStoredMessage, getStoredMessage, storedSenderName, type StoredMessage } from './message-store.js'
 import { db } from '../db/index.js'
 
@@ -47,10 +47,11 @@ const isBroadcastJid = (jid: string | null | undefined): boolean =>
 
 
 
-// `sudo` and `bot` are gone: forwarding recovered messages to sudo users or to
-// the owner chat leaked private chats into somebody's inbox. Recovery now stays
-// in the chat it happened in, or goes to one explicitly configured chat.
-export type AntiDeleteMode = 'off' | 'same' | 'jid'
+// `sudo` is gone: forwarding recovered messages to sudo users leaked private
+// chats. `bot` sends recoveries to the bot's own number (self chat) instead of
+// to the anchor/owner. Recovery otherwise stays in the chat it happened in, or
+// goes to one explicitly configured chat.
+export type AntiDeleteMode = 'off' | 'same' | 'bot' | 'jid'
 
 export function isAntiDeleteEnabled(): boolean {
     return config.antiDelete.mode !== 'off'
@@ -60,10 +61,14 @@ function jidNumber(jid: string): string {
     return (jid.split('@')[0] ?? '').split(':')[0] ?? ''
 }
 
-function destinations(chat: string): string[] {
+function destinations(chat: string, sock?: WASocket): string[] {
     switch (config.antiDelete.mode) {
         case 'same':
             return [chat].filter(Boolean)
+        case 'bot': {
+            const self = sock ? selfChatJid(sock) : ''
+            return self ? [self] : []
+        }
         case 'jid':
             return config.antiDelete.jid ? [`${config.antiDelete.jid}@s.whatsapp.net`] : []
         default:
@@ -231,7 +236,7 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         findStoredMessage(id)
 
     // Never post into a group without an active .agb live. Owner DM copies are unaffected.
-    const destinationList = destinations(chat).filter((dest) => !dest.endsWith('@g.us') || db.gameActive(dest))
+    const destinationList = destinations(chat, sock).filter((dest) => !dest.endsWith('@g.us') || db.gameActive(dest))
     if (!destinationList.length) return true
 
     // With no cached copy the original sender is unknown, but the revoke still

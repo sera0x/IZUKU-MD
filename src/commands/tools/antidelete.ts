@@ -5,6 +5,7 @@ import { applySetting } from '../../settings.js'
 const state = (): string => {
     const mode = config.antiDelete.mode
     if (mode === 'off') return 'Anti-delete is off 🛑'
+    if (mode === 'bot') return 'Anti-delete forwards to the bot\'s own chat ✅'
     if (mode === 'jid') return `Anti-delete forwards to +${config.antiDelete.jid} ✅`
     return `Anti-delete mode: *${mode}* ✅`
 }
@@ -41,9 +42,9 @@ ari({
         }
 
         if (action === 'bot') {
-            applySetting('ANTI_DELETE', 'same')
+            applySetting('ANTI_DELETE', 'bot')
             await ctx.reply(
-                'Anti-delete no longer forwards to the owner chat. Deleted messages are recovered only in the chat they were deleted from ✅',
+                'Anti-delete will forward deleted messages to the bot\'s own chat (self) instead of to you ✅',
             )
             return
         }

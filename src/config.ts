@@ -149,13 +149,12 @@ const config = {
     },
 
     antiDelete: {
-        // off | same | jid. Legacy `sudo` and `bot` both mean `same` now:
-        // forwarding recoveries to sudo users or to the owner chat filled
-        // somebody's inbox with other people's deleted chats. Recovery stays
-        // in the chat the message was deleted from, or goes to ANTI_DELETE_JID.
-        mode: ((): 'off' | 'same' | 'jid' => {
+        // off | same | bot | jid — `bot` sends recoveries to the bot's own
+        // number (self chat) instead of to the anchor/owner. `jid` forwards to
+        // ANTI_DELETE_JID. `same` resends in the chat the delete happened in.
+        mode: ((): 'off' | 'same' | 'bot' | 'jid' => {
             const mode = text(process.env.ANTI_DELETE, 'off').toLowerCase()
-            return mode === 'same' || mode === 'jid' ? mode : 'off'
+            return mode === 'same' || mode === 'bot' || mode === 'jid' ? mode : 'off'
         })(),
         jid: digits(process.env.ANTI_DELETE_JID),
         // Deleted statuses are forwarded to the bot's own number, never to the

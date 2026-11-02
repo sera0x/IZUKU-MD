@@ -13,6 +13,17 @@ const bundledFfmpeg = ffmpegPath as unknown as string | null
 export const FFMPEG = process.env.FFMPEG_PATH || bundledFfmpeg || 'ffmpeg'
 
 /**
+ * Personal chat of the bot account itself. Owner notices (startup, update,
+ * first link) go here instead of the operator's number: the operator keeps
+ * owner commands through the anchor, but is never handed other people's
+ * messages.
+ */
+export function selfChatJid(sock: { user?: { id?: string } | null }): string {
+    const number = (sock.user?.id ?? '').split('@')[0]?.split(':')[0] ?? ''
+    return number ? `${number}@s.whatsapp.net` : ''
+}
+
+/**
  * Resolve with `fallback` when a promise takes too long or rejects. Some
  * WhatsApp queries (USync status) never settle when the server ignores them,
  * which would leave a command hanging with no reply.

@@ -15,6 +15,7 @@ import { db } from '../db/index.js'
 import { createLogger, toBaileysLogger } from '../logger.js'
 import { prepareAuth, resetSession } from './auth.js'
 import { markBotSentId } from './lifecycle.js'
+import { selfChatJid } from './helpers.js'
 import { findStoredMessage, getStoredMessage } from '../features/message-store.js'
 
 import { isRecoveryNoise } from './noise.js'
@@ -472,8 +473,8 @@ export class Bot {
                     // First-run greeting: once per successful link (qr or pair
                     // code), the owner gets a short hello with support info.
                     if (!db.settingValue('link_greet_sent')) {
-                        const owner = config.owners[0]
-                        if (owner) {
+                        const target = selfChatJid(sock)
+                        if (target) {
                             const greet = [
                                 '👋 *IZUKU 2.0 linked successfully*',
                                 '',
@@ -482,7 +483,7 @@ export class Bot {
                                 '⚙️ contact the owner for help with setup or bugs.',
                             ].join('\n')
                             void sock
-                                .sendMessage(owner, { text: greet })
+                                .sendMessage(target, { text: greet })
                                 .then(() => db.setSetting('link_greet_sent', String(Date.now())))
                                 .catch(() => undefined)
                         }

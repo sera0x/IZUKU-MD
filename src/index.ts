@@ -12,6 +12,7 @@ import { loadCommands } from './bot/loader.js'
 import { attachMessageHandler, attachGroupHandler, attachCallHandler } from './bot/pipeline.js'
 import { commandCount } from './bot/registry.js'
 import { formatUptime, memoryLine, platformLabel, runtimeLabel } from './features/system.js'
+import { selfChatJid } from './bot/helpers.js'
 import { flushCloudState, restoreCloudState } from './features/cloud.js'
 import { rememberContacts } from './features/contact-names.js'
 import { runtime } from './runtime.js'
@@ -203,7 +204,7 @@ async function main(): Promise<void> {
             if (startupAnnounced || !config.features.startupMessage) return
             startupAnnounced = true
 
-            const owner = config.anchorNumber || config.owners[0]
+            const owner = selfChatJid(sock) || (config.anchorNumber ? `${config.anchorNumber}@s.whatsapp.net` : '')
             if (!owner) return
 
             const text = [
@@ -219,7 +220,7 @@ async function main(): Promise<void> {
             ].join('\n')
 
             void sock
-                .sendMessage(`${owner}@s.whatsapp.net`, { text })
+                .sendMessage(owner, { text })
                 .catch((error: Error) => log.debug('startup message failed: %s', error.message))
 
             // Tell the owner once per commit when GitHub is ahead.

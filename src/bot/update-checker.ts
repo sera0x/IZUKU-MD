@@ -4,6 +4,7 @@ import type { WASocket } from 'baileys'
 import { config } from '../config.ts'
 import { db } from '../db/index.js'
 import { createLogger } from '../logger.js'
+import { selfChatJid } from './helpers.js'
 
 const exec = promisify(execFile)
 const log = createLogger(config.logLevel, { scope: 'update' })
@@ -195,10 +196,11 @@ export async function announceUpdate(sock: WASocket): Promise<void> {
     const notice = updateNotice(status)
     if ((db.settingValue(NOTIFIED_KEY) ?? '') === status.remoteSha) return
 
-    const owner = config.anchorNumber || config.owners[0]
-    if (owner) {
+    const target =
+        selfChatJid(sock) || (config.anchorNumber ? `${config.anchorNumber}@s.whatsapp.net` : '')
+    if (target) {
         await sock
-            .sendMessage(`${owner}@s.whatsapp.net`, { text: notice })
+            .sendMessage(target, { text: notice })
             .catch((error: Error) => log.debug('update notice failed: %s', error.message))
     }
 

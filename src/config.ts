@@ -164,7 +164,7 @@ const config = {
 
     antilink: {
         values: csv(process.env.ANTILINK_VALUES, ['chat.whatsapp.com', 'wa.me', 't.me']),
-        action: text(process.env.ANTILINK_ACTION, 'remove') === 'warn' ? 'warn' : 'remove',
+        action: text(process.env.ANTILINK_ACTION, 'warn') === 'remove' ? 'remove' : 'warn',
     },
     badWords: csv(process.env.ANTI_BAD_WORD),
     blockedCountries: phoneNumbers(process.env.FAKE_COUNTRY_CODE),

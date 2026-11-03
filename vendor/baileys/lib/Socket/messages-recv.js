@@ -80,6 +80,57 @@ export const makeMessagesRecvSocket = (config) => {
     const getLIDForPN = signalRepository.lidMapping.getLIDForPN.bind(signalRepository.lidMapping);
     /** this mutex ensures that each retryRequest will wait for the previous one to finish */
     const retryMutex = makeMutex();
+    /**
+     * A message that cannot be decrypted while the socket is dropping cannot be
+     * answered with a retry receipt either: the send throws {@link Boom}
+     * "Connection Closed" (428), so no retry reaches the sender and the stanza is
+     * NACK'd. WhatsApp then re-pushes the same message every ~1.5s, and each copy
+     * takes the retry mutex, so every later message in that chat waits behind it.
+     * That is the multi-minute stall a freshly linked session shows. Park those
+     * stanzas instead and decrypt them again once the socket is open.
+     */
+    const deferredDecrypts = new Map();
+    const MAX_DEFERRED_DECRYPTS = 300;
+    const isConnectionClosedError = (error) => {
+        const status = error?.output?.statusCode ?? error?.data?.statusCode;
+        if (status === 428 || status === 408 || status === 503) return true;
+        const text = String(error?.message ?? error ?? '');
+        return /connection closed|connection terminated|socket closed|timed out/i.test(text);
+    };
+    const parkForReconnect = (node) => {
+        const id = node?.attrs?.id;
+        if (!id || deferredDecrypts.has(id)) return;
+        if (deferredDecrypts.size >= MAX_DEFERRED_DECRYPTS) {
+            deferredDecrypts.delete(deferredDecrypts.keys().next().value);
+        }
+        deferredDecrypts.set(id, node);
+        logger.debug({ msgId: id, pending: deferredDecrypts.size }, 'parked undecryptable message until the socket reopens');
+    };
+    let flushingDeferredDecrypts = false;
+    const flushDeferredDecrypts = async () => {
+        if (flushingDeferredDecrypts || deferredDecrypts.size === 0) return;
+        flushingDeferredDecrypts = true;
+        try {
+            const pending = [...deferredDecrypts.values()];
+            deferredDecrypts.clear();
+            for (const node of pending) {
+                if (!ws.isOpen) {
+                    parkForReconnect(node);
+                    break;
+                }
+                try {
+                    await handleMessage(node);
+                }
+                catch {
+                    /* handleMessage logs its own failures */
+                }
+                await delay(50);
+            }
+        }
+        finally {
+            flushingDeferredDecrypts = false;
+        }
+    };
     const msgRetryCache = config.msgRetryCounterCache ||
         new NodeCache({
             stdTTL: DEFAULT_CACHE_TTLS.MSG_RETRY, // 1 hour
@@ -1454,6 +1505,13 @@ export const makeMessagesRecvSocket = (config) => {
                                 }
                             }
                             catch (err) {
+                                // No point NACK'ing a stanza we could not answer: the server
+                                // resends it immediately and the loop starts again. Park it
+                                // and replay after the socket is back.
+                                if (isConnectionClosedError(err)) {
+                                    parkForReconnect(node);
+                                    return;
+                                }
                                 logger.error({ err }, 'Failed to send retry');
                             }
                             acked = true;
@@ -1508,7 +1566,14 @@ export const makeMessagesRecvSocket = (config) => {
             });
         }
         catch (error) {
-            logger.error({ error, node: binaryNodeToString(node) }, 'error in handling message');
+            if (isConnectionClosedError(error)) {
+                // Same story as above: the socket went away mid-handling. Keep the
+                // stanza and retry it on the next open instead of spamming the log
+                // with its full XML every 1.5 seconds.
+                parkForReconnect(node);
+                return;
+            }
+            logger.error({ error: error?.message ?? error, msgId: node?.attrs?.id }, 'error in handling message');
             if (!acked) {
                 await sendMessageAck(node, NACK_REASONS.UnhandledError).catch(ackErr => logger.error({ ackErr }, 'failed to ack message after error'));
             }
@@ -1735,6 +1800,9 @@ export const makeMessagesRecvSocket = (config) => {
     /** dedupe in-flight 463 recovery token issuance by target JID */
     const inFlight463Recoveries = new Set();
     ev.on('connection.update', ({ isOnline, connection }) => {
+        if (connection === 'open' && deferredDecrypts.size > 0) {
+            void flushDeferredDecrypts();
+        }
         if (typeof isOnline !== 'undefined') {
             sendActiveReceipts = isOnline;
             logger.trace(`sendActiveReceipts set to "${sendActiveReceipts}"`);

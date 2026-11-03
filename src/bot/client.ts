@@ -1,5 +1,3 @@
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { boldText, isMarkerLog, isStartupBroadcast } from './bold.js'
 import {
     Browsers,
@@ -10,7 +8,7 @@ import {
     type ConnectionState,
     type WASocket,
 } from 'baileys'
-import { config, digits, login } from '../config.ts'
+import { config } from '../config.ts'
 import { db } from '../db/index.js'
 import { createLogger, toBaileysLogger } from '../logger.js'
 import { prepareAuth, resetSession } from './auth.js'
@@ -221,32 +219,12 @@ function createSignalGuard(): {
     }
 }
 
-/**
- * A pairing code lives for about a minute. When it expires the bot used to ask
- * for a fresh one on every reconnect (and every reconnect also re-requested it),
- * so the terminal filled up with codes and the phone showed "code expired" for
- * all but the last. One code per two minutes is enough to actually type it in.
- */
-const PAIRING_CODE_COOLDOWN_MS = 2 * 60_000
-
-/**
- * How long a pairing code is left waiting before the bot stops asking. Requesting
- * code after code is what gets a number rate limited by WhatsApp, so after this
- * the bot parks itself until someone deletes the marker and restarts it.
- */
-const PAIRING_TIMEOUT_MS = 150_000
-const PAIRING_PAUSE_FILE = join(dirname(config.sessionDir), 'pairing-paused')
-
 export class Bot {
     private sock: WASocket | null = null
     private stopping = false
     private attempts = 0
     private lastFailReason = ''
     private connectedState = false
-    private pairingRequested = false
-    private pairingCodeAt = 0
-    private awaitingPairing = false
-    private pairingTimer: ReturnType<typeof setTimeout> | undefined
 
     constructor(private readonly events: BotEvents) {}
 
@@ -280,7 +258,7 @@ export class Bot {
             // While a pairing code is pending, reconnecting is normal: the user
             // simply has not typed it yet. Exiting here made PM2 restart the bot
             // and print a brand-new code every few seconds.
-            if (!this.connectedState && this.attempts >= 5 && !this.awaitingPairing) {
+            if (!this.connectedState && this.attempts >= 5) {
                 const stale = /QR refs attempts ended|logged out|Stale session/i.test(this.lastFailReason)
                 log.error(
                     'Not connected after %d attempts. Shutting down%s.',
@@ -317,15 +295,6 @@ export class Bot {
 
 
     private async runOnce(): Promise<boolean> {
-        // A previous run already timed out waiting for a code. Park here instead
-        // of hitting WhatsApp again: PM2 keeps the process online, but nothing is
-        // sent until the marker is removed.
-        if (login.mode === 'pairing' && existsSync(PAIRING_PAUSE_FILE)) {
-            log.error('Pairing is paused: no code was approved within %d seconds.', PAIRING_TIMEOUT_MS / 1000)
-            log.error('Delete %s and run `pm2 restart %s` when you are ready to pair again.', PAIRING_PAUSE_FILE, process.env.name ?? 'IZUKU-MD')
-            await new Promise<void>(() => undefined)
-        }
-
 
         // prepareAuth can refuse a session that does not belong to this
         // deployment — that must stop the process, not spin in a retry loop.
@@ -428,46 +397,11 @@ export class Bot {
                 const { connection, lastDisconnect, qr } = update
 
                 if (qr) {
-                    const needsPairing = login.mode === 'pairing' && !state.creds.registered
-
-                    if (!needsPairing) {
-                        this.events.onQr?.(qr)
-                    } else {
-                        const now = Date.now()
-                        const due = !this.pairingRequested || now - this.pairingCodeAt > PAIRING_CODE_COOLDOWN_MS
-                        if (due) {
-                            const reissue = this.pairingCodeAt > 0
-                            this.pairingRequested = true
-                            this.awaitingPairing = true
-                            void this.requestPairingCode(sock)
-                                .then(() => {
-                                    this.pairingCodeAt = Date.now()
-                                    if (reissue) log.warn('The previous code expired — use the new one above.')
-                                    this.armPairingTimeout()
-                                })
-                                .catch((error: Error) => {
-                                    this.pairingRequested = false
-                                    this.awaitingPairing = false
-                                    log.error('Pairing code request failed: %s', error.message)
-                                    log.warn('Switching to QR login — scan the code below instead.')
-                                    login.mode = 'qr'
-                                    this.events.onQr?.(qr)
-                                })
-                        }
-                    }
+                    this.events.onQr?.(qr)
                 }
 
                 if (connection === 'open') {
                     this.attempts = 0
-                    this.awaitingPairing = false
-                    this.pairingRequested = false
-                    this.pairingCodeAt = 0
-                    this.clearPairingTimeout()
-                    try {
-                        rmSync(PAIRING_PAUSE_FILE, { force: true })
-                    } catch {
-                        /* non-fatal */
-                    }
                     this.connectedState = true
                     log.info('Connected to WhatsApp as %s', sock.user?.id ?? 'unknown')
                     // First-run greeting: once per successful link (qr or pair
@@ -519,56 +453,5 @@ export class Bot {
                 }
             })
         }).finally(() => clearInterval(sessionFixer))
-    }
-
-
-
-    /** Stop requesting codes when the user never enters one. */
-    private armPairingTimeout(): void {
-        this.clearPairingTimeout()
-        this.pairingTimer = setTimeout(() => {
-            this.pairingTimer = undefined
-            log.error('No pairing approval after %d seconds — stopping so WhatsApp does not rate-limit this number.', PAIRING_TIMEOUT_MS / 1000)
-            try {
-                writeFileSync(PAIRING_PAUSE_FILE, new Date().toISOString())
-            } catch {
-                /* non-fatal */
-            }
-            log.error('Pairing paused. Delete %s and run `pm2 restart %s` to try again.', PAIRING_PAUSE_FILE, process.env.name ?? 'IZUKU-MD')
-            this.stopping = true
-            try {
-                this.sock?.end(undefined)
-            } catch {
-                /* non-fatal */
-            }
-            // Outside PM2 there is nothing to keep alive, so exit directly.
-            if (!process.env.pm_id) process.exit(0)
-        }, PAIRING_TIMEOUT_MS)
-    }
-
-    private clearPairingTimeout(): void {
-        if (this.pairingTimer !== undefined) {
-            clearTimeout(this.pairingTimer)
-            this.pairingTimer = undefined
-        }
-    }
-
-    private async requestPairingCode(sock: WASocket): Promise<void> {
-        const phone = digits(login.pairingNumber || process.env.PAIRING_NUMBER)
-        if (!/^\d{7,15}$/.test(phone)) {
-            throw new Error('PAIRING_NUMBER is not a valid phone number (use digits with country code).')
-        }
-
-        log.info('Requesting an 8-digit pairing code for +%s …', phone)
-        const code = await sock.requestPairingCode(phone)
-
-        log.info('')
-        log.info('  ┌─────────────────────────────┐')
-        log.info('  │  PAIRING CODE:  %s  │', code)
-        log.info('  └─────────────────────────────┘')
-        log.info('')
-        log.info('On your phone: WhatsApp > Settings > Linked devices > Link a device')
-        log.info('Tap "Link with phone number instead" and enter the code above.')
-        log.info('Enter this code — it is only valid for about a minute. A new one is not requested for another two minutes, so no code spam.')
     }
 }

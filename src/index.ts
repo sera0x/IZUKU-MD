@@ -1,7 +1,6 @@
 import './quiet-logs.js'
-import { createInterface } from 'node:readline'
 import qrcode from 'qrcode-terminal'
-import { config, digits, login } from './config.ts'
+import { config, login } from './config.ts'
 import { createLogger } from './logger.js'
 import { runPreflight } from './bot/preflight.js'
 import { Bot } from './bot/client.js'
@@ -27,49 +26,6 @@ import {
 
 const log = createLogger(config.logLevel, { scope: 'izuku' })
 
-function isValidNumber(number: string): boolean {
-    return /^\d{7,15}$/.test(number)
-}
-
-function createPrompter(): { ask: (text: string) => Promise<string>; close: () => void } {
-    const rl = createInterface({ input: process.stdin, output: process.stdout })
-    const queued: string[] = []
-    let pending: ((line: string) => void) | null = null
-    let closed = false
-
-    rl.on('line', (line) => {
-        if (pending) {
-            const resolve = pending
-            pending = null
-            resolve(line)
-        } else {
-            queued.push(line)
-        }
-    })
-
-    rl.on('close', () => {
-        closed = true
-        if (pending) {
-            const resolve = pending
-            pending = null
-            resolve('')
-        }
-    })
-
-    return {
-        ask: (text) => {
-            process.stdout.write(text)
-            const next = queued.shift()
-            if (next !== undefined) return Promise.resolve(next)
-            if (closed) return Promise.resolve('')
-            return new Promise<string>((resolve) => {
-                pending = resolve
-            })
-        },
-        close: () => rl.close(),
-    }
-}
-
 async function chooseLogin(): Promise<void> {
     if (config.sessionId) {
         log.info('SESSION_ID found — restoring the saved WhatsApp session.')
@@ -81,63 +37,17 @@ async function chooseLogin(): Promise<void> {
         return
     }
 
-    const configuredNumber = login.pairingNumber || digits(process.env.PAIRING_NUMBER)
+    // Pairing codes come from the pairing website only. Typing the number into
+    // the terminal here is what produced code after code (and WhatsApp rate
+    // limiting the number), so the terminal just asks for a SESSION_ID instead.
+    // `PAIRING_NUMBER` in an old config is ignored: the login falls back to QR.
+    login.mode = 'qr'
 
-
-    if (!process.stdin.isTTY) {
-        if (configuredNumber && isValidNumber(configuredNumber)) {
-            login.mode = 'pairing'
-            login.pairingNumber = configuredNumber
-            log.info('No terminal input — using pairing code for +%s.', configuredNumber)
-        } else {
-            login.mode = 'qr'
-            log.info('No terminal input and no PAIRING_NUMBER — using QR code login.')
-        }
-        return
-    }
-
-    log.info('No WhatsApp session found. Choose a login method:')
-    log.info('  1. QR code : scan the code with WhatsApp')
-    log.info('  2. Pairing : enter an 8-digit code on your phone')
-    log.info('')
-
-    const prompter = createPrompter()
-
-    try {
-        const choice = (await prompter.ask('Enter 1 for QR code or 2 for pairing code: ')).trim()
-
-        if (choice === '1') {
-            login.mode = 'qr'
-            log.info('QR code login selected — the code will be printed below.')
-            return
-        }
-
-        if (choice !== '2') {
-            log.error('Invalid choice. Run the bot again and pick 1 or 2.')
-            process.exitCode = 1
-            return
-        }
-
-        const prompt = configuredNumber
-            ? `WhatsApp number with country code [${configuredNumber}]: `
-            : 'WhatsApp number with country code (digits only): '
-        const entered = (await prompter.ask(prompt)).trim()
-        const number = digits(entered) || configuredNumber
-
-        if (!isValidNumber(number)) {
-            log.error('That phone number is not valid. Include the country code and use digits only.')
-            process.exitCode = 1
-            return
-        }
-
-        login.mode = 'pairing'
-        login.pairingNumber = number
-        process.env.PAIRING_NUMBER = number
-        log.info('Pairing code login selected for +%s.', number)
-        log.info('The 8-digit code will be printed here — enter it on your phone.')
-    } finally {
-        prompter.close()
-    }
+    log.warn('No WhatsApp session found.')
+    log.warn('Get a SESSION_ID from the pairing website, put it in config.env as')
+    log.warn('  SESSION_ID=IZUKU-…')
+    log.warn('then restart the bot. The site also sends the id to the linked account.')
+    log.warn('Falling back to QR login for now — scan the code below if you prefer.')
 }
 
 async function main(): Promise<void> {

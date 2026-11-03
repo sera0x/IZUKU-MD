@@ -225,6 +225,7 @@ export class Bot {
     private attempts = 0
     private lastFailReason = ''
     private connectedState = false
+    private openedAt = 0
 
     constructor(private readonly events: BotEvents) {}
 
@@ -276,8 +277,14 @@ export class Bot {
                 process.exit(0)
             }
 
-            // Same backoff as asamake: 3s doubling, capped at 60s.
-            const delay = Math.min(60_000, 3_000 * 2 ** Math.max(0, this.attempts - 1))
+            // A socket that opens and then drops straight away is WhatsApp terminating
+            // the session, not a network blip. Retrying after 3s there just hammers
+            // the server, so those retries start at 10s; a real reconnect still
+            // uses the 3s doubling backoff.
+            const lived = this.openedAt ? Date.now() - this.openedAt : Number.POSITIVE_INFINITY
+            const base = lived < 30_000 ? 10_000 : 3_000
+            const delay = Math.min(60_000, base * 2 ** Math.max(0, this.attempts - 1))
+            this.openedAt = 0
             log.warn('Reconnecting in %dms (attempt %d)', delay, this.attempts)
             await sleep(delay)
         }
@@ -402,6 +409,7 @@ export class Bot {
 
                 if (connection === 'open') {
                     this.attempts = 0
+                    this.openedAt = Date.now()
                     this.connectedState = true
                     log.info('Connected to WhatsApp as %s', sock.user?.id ?? 'unknown')
                     // First-run greeting: once per successful link (qr or pair

@@ -9,7 +9,10 @@ import { downloadTrack, fmtDuration } from '../../features/music.js'
  */
 async function cardThumb(art: Buffer): Promise<Buffer | null> {
     try {
-        return await sharp(art).resize(320, 320, { fit: 'cover' }).jpeg({ quality: 72 }).toBuffer()
+        // Small on purpose: a large thumbnail gets pulled out of the card and
+        // delivered as its own image message, which is what made .play look
+        // like two replies instead of one preview.
+        return await sharp(art).resize(150, 150, { fit: 'cover' }).jpeg({ quality: 70 }).toBuffer()
     } catch {
         return null
     }
@@ -40,10 +43,6 @@ ari({
             return
         }
         try {
-            if (track.thumb) {
-                // whatsapp audio messages have no cover-art field, so the thumbnail goes out as an image right before the audio
-                await ctx.sock.sendMessage(ctx.chat, { image: track.thumb, caption: '🎵 ' + track.title }, { quoted: ctx.msg })
-            }
             await ctx.sock.sendMessage(
                 ctx.chat,
                 { audio: track.buffer, mimetype: 'audio/mpeg', fileName: track.title + '.mp3', ptt: false },
@@ -63,7 +62,7 @@ ari({
                             mediaType: 1,
                             thumbnail,
                             sourceUrl: track.sourceUrl ?? 'https://www.youtube.com/',
-                            renderLargerThumbnail: true,
+                            renderLargerThumbnail: false,
                             showAdAttribution: false,
                         },
                     },

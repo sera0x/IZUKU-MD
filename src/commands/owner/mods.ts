@@ -1,7 +1,7 @@
 import { ari } from '../../bot/registry.js'
 import { config } from '../../config.js'
 import { db } from '../../db/index.js'
-import { displayNameFor, identityAliases, normalizeTarget, resolveTarget } from '../../bot/group-utils.js'
+import { identityAliases, normalizeTarget, resolveTarget, tagOf } from '../../bot/group-utils.js'
 import { jidToNumber } from '../../bot/helpers.js'
 
 // Mods pass the game gates (.agb live/kill, .pspawn, .spawn-free games) but
@@ -28,7 +28,9 @@ ari({
         }
         const aliases = await identityAliases(ctx, raw)
         for (const jid of new Set([raw, target, ...aliases].filter(Boolean))) db.modAdd(jid, ctx.sender)
-        await ctx.reply(`${displayNameFor(target)} is a mod now ✅`)
+        // @digits plus the mention list: WhatsApp renders the real push/contact
+        // name, which stays correct when the user renames themselves.
+        await ctx.reply(`${tagOf(undefined, target)} is a mod now ✅`, [target])
     },
 })
 
@@ -49,7 +51,12 @@ ari({
         const aliases = await identityAliases(ctx, raw)
         let removed = false
         for (const jid of new Set([raw, target, ...aliases].filter(Boolean))) if (db.modRemove(jid)) removed = true
-        await ctx.reply(removed ? `${displayNameFor(target)} is no longer a mod ✅` : `${displayNameFor(target)} is not a mod. 🛑`)
+        await ctx.reply(
+            removed
+                ? `${tagOf(undefined, target)} is no longer a mod ✅`
+                : `${tagOf(undefined, target)} is not a mod. 🛑`,
+            [target],
+        )
     },
 })
 

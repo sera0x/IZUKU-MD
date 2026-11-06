@@ -1,6 +1,6 @@
 import type { CommandContext } from '../../bot/types.js'
 import { jidToNumber } from '../../bot/helpers.js'
-import { normalizeTarget, resolveTarget } from '../../bot/group-utils.js'
+import { identityAliases, normalizeTarget, resolveTarget } from '../../bot/group-utils.js'
 import { ari } from '../../bot/registry.js'
 import { config } from '../../config.js'
 import { applySetting } from '../../settings.js'
@@ -13,7 +13,13 @@ const listSudo = (): string =>
         .map((number) => `+${number}${config.owners.includes(number) ? ' (owner)' : ''}`)
         .join(', ') || 'none'
 
-/** Resolve a tag / reply / typed number into a bare phone number. */
+/**
+ * Resolve a tag / reply / typed number into a bare phone number.
+ *
+ * A tag usually arrives as a LID, so every known form of the account is tried:
+ * the socket's LID mapping, the persisted pairs and the group participant list.
+ * A LID only fails when nothing anywhere maps it to a phone number.
+ */
 async function targetNumber(ctx: CommandContext): Promise<string | null> {
     const raw = resolveTarget(ctx)
     if (!raw) {
@@ -22,17 +28,40 @@ async function targetNumber(ctx: CommandContext): Promise<string | null> {
     }
 
     const target = await normalizeTarget(ctx, raw)
-    if (target.endsWith('@lid')) {
+    const aliases = await identityAliases(ctx, raw).catch(() => [] as string[])
+
+    for (const jid of [target, raw, ...aliases]) {
+        if (!jid.endsWith('@s.whatsapp.net')) continue
+        const number = jidToNumber(jid)
+        if (/^\d{7,15}$/.test(number)) return number
+    }
+
+    if (target.endsWith('@lid') || raw.endsWith('@lid')) {
         await ctx.reply('I could not resolve that LID to a phone number. 🛑')
         return null
     }
 
-    const number = jidToNumber(target)
-    if (!/^\d{7,15}$/.test(number)) {
-        await ctx.reply('That is not a valid phone number. 🛑')
-        return null
+    await ctx.reply('That is not a valid phone number. 🛑')
+    return null
+}
+
+/** Add the tagged / replied / typed account to sudo. */
+async function addSudo(ctx: CommandContext): Promise<void> {
+    const number = await targetNumber(ctx)
+    if (!number) return
+
+    if (config.owners.includes(number)) {
+        await ctx.reply(`+${number} is an owner and already has full access. 🛑`)
+        return
     }
-    return number
+
+    if (config.sudo.includes(number)) {
+        await ctx.reply(`+${number} is already a sudo user. 🛑`)
+        return
+    }
+
+    applySetting('SUDO', [...config.sudo, number].join(','))
+    await ctx.reply(`Added +${number} as a sudo user ✅`)
 }
 
 /**
@@ -83,6 +112,13 @@ ari({
     run: async (ctx) => {
         const action = (ctx.args[0] ?? '').toLowerCase()
 
+        // `.setsudo @user` is the natural form of the alias, so anything that is
+        // not a subcommand is treated as the account to add.
+        if (action && !['list', 'clear', 'add', 'del', 'remove', 'rm'].includes(action)) {
+            await addSudo(ctx)
+            return
+        }
+
         if (!action || action === 'list') {
             await ctx.reply(`*Sudo users* (${config.sudo.length})\n${listSudo()}`)
             return
@@ -99,23 +135,7 @@ ari({
             return
         }
 
-        if (action !== 'add') {
-            await ctx.reply(
-                `Usage: ${config.prefix}sudo add @user | ${config.prefix}delsudo @user | ${config.prefix}sudo clear 🛑`,
-            )
-            return
-        }
-
-        const number = await targetNumber(ctx)
-        if (!number) return
-
-        if (config.sudo.includes(number)) {
-            await ctx.reply(`+${number} is already a sudo user. 🛑`)
-            return
-        }
-
-        applySetting('SUDO', [...config.sudo, number].join(','))
-        await ctx.reply(`Added +${number} as a sudo user ✅`)
+        await addSudo(ctx)
     },
 })
 

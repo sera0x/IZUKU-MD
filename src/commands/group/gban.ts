@@ -1,7 +1,7 @@
 import { ari } from '../../bot/registry.js'
 import { config } from '../../config.js'
 import { db } from '../../db/index.js'
-import { displayNameFor, identityAliases, normalizeTarget, resolveTarget } from '../../bot/group-utils.js'
+import { identityAliases, normalizeTarget, resolveTarget, tagOf } from '../../bot/group-utils.js'
 import { jidToNumber } from '../../bot/helpers.js'
 
 
@@ -54,7 +54,10 @@ ari({
             .sendMessage(
                 ctx.chat,
                 {
-                    text: `${displayNameFor(target).replace(/^@/, '')} has been banned by ${displayNameFor(banner).replace(/^@/, '')}${days ? ` for ${days} day${days === 1 ? '' : 's'}` : ''}. Reason: ${reason} 🛑`,
+                    // @digits + mentions lets WhatsApp render the push/contact
+                    // name instead of a stored name that can go stale.
+                    text: `${tagOf(undefined, target)} has been banned by ${tagOf(undefined, banner)}${days ? ` for ${days} day${days === 1 ? '' : 's'}` : ''}. Reason: ${reason} 🛑`,
+                    mentions: [target, banner],
                 },
                 { quoted: ctx.msg },
             )
@@ -85,7 +88,9 @@ ari({
 
         await ctx.reply(
             removed
-                ? `${displayNameFor(target).replace(/^@/, '')} can use the bot in this group again ✅`
-                : `${displayNameFor(target).replace(/^@/, '')} is not gbanned here. 🛑`)
+                ? `${tagOf(undefined, target)} can use the bot in this group again ✅`
+                : `${tagOf(undefined, target)} is not gbanned here. 🛑`,
+            [target],
+        )
     },
 })

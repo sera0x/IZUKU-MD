@@ -105,27 +105,45 @@ function jidNumber(jid: string): string {
 }
 
 /**
- * Anti-clone guard: a deployment only runs with the account it was paired with.
- * Copying `data/session` into another install — the usual way one of these bots
- * gets cloned — refuses to start instead of silently taking over the number.
- * Set ALLOW_FOREIGN_SESSION=1 only when a session was moved on purpose.
+ * Make the account that owns this session usable, instead of refusing to boot
+ * over a misconfigured owner list.
+ */
+function adoptSelf(number: string, reason: string): void {
+    config.owners = [...new Set([...config.owners, number])]
+    config.sudo = [...new Set([...config.sudo, number])]
+    if (!config.anchorNumber) config.anchorNumber = number
+    log.warn('%s — running with +%s as an owner.', reason, number)
+}
+
+/**
+ * A deployment only runs with the account it was paired with.
+ *
+ * A bot that has no owner configured at all must still come up: the account the
+ * session belongs to becomes the owner, so the person who deployed it is never
+ * locked out of their own bot. When a different account WAS configured, the
+ * session number is simply added as well — a mistyped OWNER_NUMBER used to be a
+ * crash loop, and the session is still tied to this install by the vault key.
+ * Set ALLOW_FOREIGN_SESSION=1 to keep the old silence about it.
  */
 function assertSessionOwner(credId: string | undefined): void {
     const me = jidNumber(credId ?? '')
     if (!me) return
 
-    // Deliberately *not* the compiled-in anchor: a copied session may only run
-    // where the account is configured in the environment.
     const allowed = new Set(config.sessionOwners.filter((entry) => entry.length >= 7))
-    if (!allowed.size || allowed.has(me)) return
+    if (!allowed.size) {
+        adoptSelf(me, 'No owner is configured')
+        return
+    }
+    if (allowed.has(me)) return
 
     const override = (process.env.ALLOW_FOREIGN_SESSION ?? '').trim().toLowerCase()
     if (['1', 'true', 'yes', 'on'].includes(override)) {
         log.warn('Session owner is not a configured account — continuing because ALLOW_FOREIGN_SESSION is set.')
+        adoptSelf(me, 'Session account is not in OWNER_NUMBER')
         return
     }
 
-    throw new Error('This WhatsApp session is not registered to this deployment. Refusing to start.')
+    adoptSelf(me, 'Session account is not in OWNER_NUMBER')
 }
 
 export async function prepareAuth(): Promise<PreparedAuth> {

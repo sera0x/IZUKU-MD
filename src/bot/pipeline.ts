@@ -2,6 +2,7 @@ import { jidNormalizedUser, type GroupMetadata, type WAMessage, type WASocket } 
 import { config } from '../config.ts'
 import { db } from '../db/index.js'
 import { createLogger } from '../logger.js'
+import { answersHere } from '../features/active-bot.js'
 import { firstProcessedSighting } from '../features/message-store.js'
 import { runtime } from '../runtime.js'
 import { clearAfkOnActivity, notifyAfkMentions } from '../features/afk.js'
@@ -317,6 +318,11 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
         : body
     const args = text.length ? text.split(/\s+/) : []
     const command = commandMode ? findCommand(commandName) : undefined
+
+    // A group can hold several deployments of the bot. `.sleep <name>` chooses
+    // the one that answers; the others stay silent but still keep their message
+    // cache warm and still honour `.sleep` itself.
+    if (isGroup && !(commandName === 'sleep' && isOwner) && !answersHere(sock, chat)) return
     if (command && !config.gamesEnabled && command.category === 'games') {
         await sendText(sock, chat, msg, '🎮 the games layer is off on this deploy. 🛑')
         return

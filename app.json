@@ -1,0 +1,159 @@
+{
+  "name": "IZUKU-MD",
+  "description": "WhatsApp multi-device bot. Clean, fast, quiet by default.",
+  "repository": "https://github.com/sera0x/IZUKU-MD",
+  "logo": "",
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys"
+  ],
+  "env": {
+    "OWNER_NUMBER": {
+      "description": "Your WhatsApp number with country code, digits only. Becomes the bot owner.",
+      "required": true
+    },
+    "SESSION_ID": {
+      "description": "Session id from the pairing site (IZUKU-XXXXXXXXXXXX, single use). Leave empty to use pairing code instead.",
+      "required": false
+    },
+    "PAIRING_NUMBER": {
+      "description": "Bot account number for pairing-code login (digits only). Leave empty if SESSION_ID is set.",
+      "required": false
+    },
+    "SUDO": {
+      "description": "Extra sudo numbers, comma separated, digits only.",
+      "required": false
+    },
+    "BOT_NAME": {
+      "description": "Bot display name.",
+      "required": false,
+      "value": "IZUKU-MD"
+    },
+    "OWNER_NAME": {
+      "description": "Owner display name shown in menus.",
+      "required": false,
+      "value": "sera0x"
+    },
+    "PREFIX": {
+      "description": "Command prefix.",
+      "required": false,
+      "value": "."
+    },
+    "WORKTYPE": {
+      "description": "public = replies to everyone, private = owner only.",
+      "required": false,
+      "value": "public"
+    },
+    "LOG_LEVEL": {
+      "description": "Log verbosity: info, warn or error.",
+      "required": false,
+      "value": "info"
+    },
+    "AUTO_READ_STATUS": {
+      "description": "View statuses automatically (true/false).",
+      "required": false,
+      "value": "false"
+    },
+    "AUTO_STATUS_VIEW_DELAY": {
+      "description": "Delay before viewing a status, milliseconds.",
+      "required": false,
+      "value": "0"
+    },
+    "AUTO_STATUS_REACT": {
+      "description": "Optional emoji to react to statuses with.",
+      "required": false
+    },
+    "AUTO_REACTION": {
+      "description": "React to messages automatically (true/false).",
+      "required": false,
+      "value": "false"
+    },
+    "ALWAYS_ONLINE": {
+      "description": "Show always-online presence (true/false).",
+      "required": false,
+      "value": "false"
+    },
+    "TYPING": {
+      "description": "Show typing indicator (true/false).",
+      "required": false,
+      "value": "false"
+    },
+    "ANTI_CALL": {
+      "description": "Block WhatsApp calls to the bot (true/false).",
+      "required": false,
+      "value": "false"
+    },
+    "READ_MESSAGE": {
+      "description": "Mark command messages as read (true/false).",
+      "required": false,
+      "value": "true"
+    },
+    "STARTUP_MESSAGE": {
+      "description": "Send the startup/online message (true/false).",
+      "required": false,
+      "value": "true"
+    },
+    "ANTI_DELETE": {
+      "description": "Deleted message recovery: off, same (resend where it was deleted) or jid.",
+      "required": false,
+      "value": "off"
+    },
+    "ANTI_DELETE_JID": {
+      "description": "Destination number when ANTI_DELETE=jid.",
+      "required": false
+    },
+    "ANTILINK_VALUES": {
+      "description": "Link patterns blocked by antilink, comma separated.",
+      "required": false,
+      "value": "chat.whatsapp.com,wa.me,t.me"
+    },
+    "ANTILINK_ACTION": {
+      "description": "remove or warn.",
+      "required": false,
+      "value": "remove"
+    },
+    "ANTI_BAD_WORD": {
+      "description": "Bad words to filter, comma separated. Empty = off.",
+      "required": false
+    },
+    "FAKE_COUNTRY_CODE": {
+      "description": "Country codes rejected on group join, e.g. 92,234. Empty = off.",
+      "required": false
+    },
+    "WARN_COUNT": {
+      "description": "Warnings before antilink/badword action escalates.",
+      "required": false,
+      "value": "3"
+    },
+    "COMMAND_COOLDOWN_MS": {
+      "description": "Per-user command cooldown, milliseconds.",
+      "required": false,
+      "value": "1500"
+    },
+    "WELCOME_MESSAGE": {
+      "description": "Custom welcome text. Supports @user and #@count. Empty = built-in.",
+      "required": false
+    },
+    "GOODBYE_MESSAGE": {
+      "description": "Custom goodbye text. Supports @user. Empty = built-in.",
+      "required": false
+    },
+    "REPO_URL": {
+      "description": "Repo link shown in the menu.",
+      "required": false,
+      "value": "https://github.com/sera0x/IZUKU-MD"
+    },
+    "CONTACT_EMAIL": {
+      "description": "Optional contact email shown in the menu.",
+      "required": false
+    }
+  },
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "stack": "heroku-22"
+}

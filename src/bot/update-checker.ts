@@ -21,11 +21,10 @@ export interface UpdateStatus {
     error?: string
 }
 
-function repoSlug(): { owner: string; name: string } {
-    const match = /github\.com\/([^/]+)\/([^/#?]+)/i.exec(config.links.repo)
-    const owner = match?.[1] ?? 'sera0x'
-    const name = (match?.[2] ?? 'IZUKU-MD').replace(/\.git$/, '')
-    return { owner, name }
+function slugFromUrl(url: string): { owner: string; name: string } | null {
+    const match = /github\.com[/:]([^/]+)\/([^/#?\s]+)/i.exec(url)
+    if (!match?.[1] || !match?.[2]) return null
+    return { owner: match[1], name: match[2].replace(/\.git$/, '') }
 }
 
 async function git(args: string[]): Promise<string> {
@@ -35,6 +34,22 @@ async function git(args: string[]): Promise<string> {
         maxBuffer: 4 * 1024 * 1024,
     })
     return stdout.trim()
+}
+
+/**
+ * The repo that `.update` compares against must be the one `git pull` actually
+ * pulls from, so the local remote wins over the public repo URL in the config —
+ * the game build tracks IZUKU-MD-FULL, and comparing it with IZUKU-MD made every
+ * check report an update that `git pull` could never install.
+ */
+async function repoSlug(): Promise<{ owner: string; name: string }> {
+    try {
+        const remote = slugFromUrl(await git(['remote', 'get-url', 'origin']))
+        if (remote) return remote
+    } catch {
+        // not a git checkout — fall back to the configured link
+    }
+    return slugFromUrl(config.links.repo) ?? { owner: 'sera0x', name: 'IZUKU-MD' }
 }
 
 export async function localSha(): Promise<string> {
@@ -60,7 +75,7 @@ export async function checkForUpdate(): Promise<UpdateStatus> {
             return status
         }
 
-        const { owner, name } = repoSlug()
+        const { owner, name } = await repoSlug()
         const response = await fetch(`https://api.github.com/repos/${owner}/${name}/commits?per_page=1`, {
             headers: { accept: 'application/vnd.github+json', 'user-agent': `${config.botName}-update-check` },
             signal: AbortSignal.timeout(15_000),

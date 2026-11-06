@@ -1,4 +1,4 @@
-import { downloadContentFromMessage, proto, type WASocket, type WAMessage } from 'baileys'
+import { downloadContentFromMessage, type WASocket, type WAMessage } from 'baileys'
 import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
 import { jidToNumber, selfChatJid, unwrapMessage } from '../bot/helpers.js'
@@ -80,9 +80,10 @@ function destinations(chat: string, sock?: WASocket): string[] {
 async function recover(
     sock: WASocket,
     dest: string,
-    content: proto.IMessage,
+    entry: StoredMessage,
     senderName: string,
 ): Promise<boolean> {
+    const content = entry.message
     const header = `*🪄 Message deleted by ${senderName}*`
     // Plain text: normal path, proven deliverable. Raw proto text fields are
     // rejected by sendMessage and silently dropped by relayMessage.
@@ -96,7 +97,19 @@ async function recover(
         return true
     }
 
-    // Media: re-download with the stored keys, upload fresh.
+    // Everything else is forwarded from the cached copy. Re-downloading media
+    // and re-uploading it is what used to fail (expired hosts, keys the bot no
+    // longer can decrypt), and it lost details like the ptt flag on a voice
+    // note. Forwarding sends the original bytes, media type and audio flags
+    // exactly as they were, with no download at all.
+    try {
+        await sock.sendMessage(dest, { forward: { key: entry.key, message: content } })
+        return true
+    } catch (error) {
+        log.warn('anti-delete: forward failed (%s), trying a media re-download', (error as Error).message)
+    }
+
+    // Fallback: re-download with the stored keys, upload fresh.
     const MEDIA: Record<string, string> = {
         imageMessage: 'image',
         videoMessage: 'video',
@@ -114,12 +127,22 @@ async function recover(
         for await (const chunk of stream) chunks.push(chunk as Buffer)
         const buffer = Buffer.concat(chunks)
         const caption = typeof media.caption === 'string' ? media.caption : undefined
-        await sock.sendMessage(dest, { text: header })
-        if (kind === 'image') await sock.sendMessage(dest, { image: buffer, caption })
-        else if (kind === 'video') await sock.sendMessage(dest, { video: buffer, caption })
-        else if (kind === 'audio') await sock.sendMessage(dest, { audio: buffer, mimetype: 'audio/mpeg' })
-        else if (kind === 'sticker') await sock.sendMessage(dest, { sticker: buffer })
-        else await sock.sendMessage(dest, { document: buffer, mimetype: 'application/octet-stream' })
+        if (kind === 'image') await sock.sendMessage(dest, { image: buffer, caption: `${header}${caption ? `\n\n${caption}` : ''}` })
+        else if (kind === 'video') await sock.sendMessage(dest, { video: buffer, caption: `${header}${caption ? `\n\n${caption}` : ''}` })
+        else if (kind === 'audio')
+            await sock.sendMessage(dest, {
+                audio: buffer,
+                // A voice note is opus/ogg and must stay a voice note; the old
+                // hardcoded audio/mpeg made it an unplayable "audio file".
+                mimetype: typeof media.mimetype === 'string' ? media.mimetype : 'audio/ogg; codecs=opus',
+                ptt: media.ptt === true,
+                seconds: typeof media.seconds === 'number' ? media.seconds : undefined,
+            })
+        else {
+            await sock.sendMessage(dest, { text: header })
+            if (kind === 'sticker') await sock.sendMessage(dest, { sticker: buffer })
+            else await sock.sendMessage(dest, { document: buffer, mimetype: 'application/octet-stream' })
+        }
         return true
     }
 
@@ -203,7 +226,7 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         }
 
         try {
-            const restored = await recover(sock, dest, entry.message, poster)
+            const restored = await recover(sock, dest, entry, poster)
             if (!restored) {
                 await sock
                     .sendMessage(dest, { text: `🗑️ *Status deleted*\n\n▸ By: *${poster}*` })
@@ -263,7 +286,7 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         // Relay to the exact chat the revoke arrived in (asamake behaviour).
         const dest = raw
         try {
-            const restored = await recover(sock, dest, entry.message, senderName)
+            const restored = await recover(sock, dest, entry, senderName)
             if (!restored) {
                 log.warn('anti-delete: nothing to restore for %s', id)
                 await sock.sendMessage(dest, { text: `Message deleted from *${senderName}*` }).catch(() => undefined)

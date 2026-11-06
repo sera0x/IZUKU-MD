@@ -157,7 +157,11 @@ function rowToEntry(row: MessageRow | undefined): StoredMessage | undefined {
     }
 }
 
-export function rememberMessage(msg: WAMessage, sender: string): void {
+export function rememberMessage(
+    msg: WAMessage,
+    sender: string,
+    options: { onlyIfMissing?: boolean } = {},
+): void {
     const chat = msg.key.remoteJid
     const id = msg.key.id
     if (!chat || !id || !msg.message) return
@@ -168,7 +172,9 @@ export function rememberMessage(msg: WAMessage, sender: string): void {
     if (sender && name) names.set(sender, { name, at: Date.now() })
 
     const now = Date.now()
-    writeEntry(upsertStmt, chat, id, msg.key, msg.message, sender, name, now)
+    // Backfilled messages (history replay) must never replace a row written
+    // live, which carries the real sender.
+    writeEntry(options.onlyIfMissing ? insertIfMissingStmt : upsertStmt, chat, id, msg.key, msg.message, sender, name, now)
 
     const context = contextInfoOf(msg.message)
     if (context?.quotedMessage && context.stanzaId) {

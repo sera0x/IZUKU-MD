@@ -134,10 +134,16 @@ const stringify = (obj: unknown): string => {
     }
 }
 
+// One contact whose pre-keys are gone makes Baileys retry a USync lookup every
+// minute, and every attempt ends in a query timeout. Nothing can act on it, it
+// repeats forever, and it buries real warnings, so it is dropped here.
+const BAILEYS_NOISE = /timed out waiting for message|USync fetch yielded no results|for pending PNs/
+
 export function toBaileysLogger(source: Logger): BaileysLogger {
     const bind = (lvl: Level) => (obj: unknown, msg?: string): void => {
         const text = msg ?? stringify(obj)
         const extra = msg && typeof obj === 'object' && obj !== null ? ` ${stringify(obj)}` : ''
+        if (BAILEYS_NOISE.test(text)) return
         source[lvl](text + extra)
     }
 

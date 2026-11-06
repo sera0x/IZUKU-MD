@@ -15,7 +15,6 @@
         "check": "tsc --noEmit && bun src/scripts/check.ts",
         "test": "tsc --noEmit",
         "service": "bash scripts/service.sh",
-        "secrets:push": "bash scripts/dkit-secrets.sh",
         "postinstall": "node scripts/patch-baileys.mjs && node_modules/typescript/bin/tsc"
     },
     "author": "sera0x",

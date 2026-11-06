@@ -2,7 +2,6 @@ import './quiet-logs.js'
 import qrcode from 'qrcode-terminal'
 import { config, login } from './config.ts'
 import { createLogger } from './logger.js'
-import { runPreflight } from './bot/preflight.js'
 import { Bot } from './bot/client.js'
 import { attachLidMappings, loadLidMappings } from './bot/identity.js'
 import { claimInstance } from './bot/instance.js'
@@ -64,7 +63,6 @@ async function main(): Promise<void> {
     await claimInstance()
 
     loadSettings()
-    runPreflight()
 
     // Load the LID/phone pairs before restoring so scoreboard rows from the
     // cloud can be written under the canonical phone-number key.

@@ -452,22 +452,6 @@ configure() {
         set_env PAIR_SERVER "$PAIR_SERVER"
     fi
 
-    # Anchor validation compares DEPLOYMENT_KEY with the dkit registry; a stale
-    # key makes every boot fail. Sync it when dkit is available and not busy.
-    if have dkit; then
-        local dkit_env="${DKIT_ENV:-production}" key profile
-        key="$(dkit env:get -e "$dkit_env" DEPLOYMENT_KEY 2>/dev/null | sed -n 's/^DEPLOYMENT_KEY=//p' | head -1)"
-        if [ -n "$key" ]; then
-            set_env DEPLOYMENT_KEY "$key"
-            ok "DEPLOYMENT_KEY synced from dkit"
-        else
-            warn "dkit is busy, DEPLOYMENT_KEY not synced (run: dkit env:get -e $dkit_env DEPLOYMENT_KEY)"
-        fi
-        profile="$(dkit env:get -e "$dkit_env" RUNTIME_PROFILE 2>/dev/null | sed -n 's/^RUNTIME_PROFILE=//p' | head -1)"
-        if [ -n "$OWNER_NUMBER" ] && [ -n "$profile" ] && [ "$OWNER_NUMBER" != "$profile" ]; then
-            warn "OWNER_NUMBER does not match the sealed RUNTIME_PROFILE — startup validation will refuse to run"
-        fi
-    fi
     ok "config.env ready"
 }
 

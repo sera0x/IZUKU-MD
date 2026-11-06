@@ -4,9 +4,7 @@ import { applySetting } from '../../settings.js'
 import { jidToNumber } from '../../bot/helpers.js'
 
 const state = (): string =>
-    config.antiDelete.status
-        ? 'Anti-status-delete is *on* — deleted statuses come to this bot number ✅'
-        : 'Anti-status-delete is off 🛑'
+    config.antiDelete.status ? 'Anti-status-delete is on ✅' : 'Anti-status-delete is off 🛑'
 
 ari({
     name: 'antistatusdelete',
@@ -23,26 +21,12 @@ ari({
             applySetting('ANTISTATUS_DELETE', action)
             await ctx.reply(
                 action === 'on'
-                    ? [
-                          '✅ *Anti-status-delete on*',
-                          '',
-                          `▸ Deleted statuses are sent to the bot number: *+${jidToNumber(ctx.sock.user?.id ?? '') || 'unknown'}*`,
-                          '▸ They are never forwarded to the owner chat or to your DMs.',
-                      ].join('\n')
-                    : '🛑 Anti-status-delete off',
+                    ? `Anti-status-delete is on ✅ (→ +${jidToNumber(ctx.sock.user?.id ?? '') || 'unknown'})`
+                    : 'Anti-status-delete is off 🛑',
             )
             return
         }
 
-        await ctx.reply(
-            [
-                state(),
-                '',
-                `▸ *${ctx.prefix}antistatusdelete on* — forward deleted statuses to the bot number`,
-                `▸ *${ctx.prefix}antistatusdelete off* — stop forwarding`,
-                '',
-                'The quote is restored with its media when it is still cached.',
-            ].join('\n'),
-        )
+        await ctx.reply(`${state()}\nUsage: ${ctx.prefix}antistatusdelete on | off`)
     },
 })

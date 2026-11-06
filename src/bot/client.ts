@@ -399,9 +399,33 @@ export class Bot {
 
 
 
+        // A socket that never emits a single update (no qr, no open, no close)
+        // used to sit there forever: the reconnect loop only reacts to
+        // `connection.update`, so the process looked alive but answered
+        // nothing. Give WhatsApp a deadline and drop the socket so `start()`
+        // retries instead of hanging until someone notices.
+        const CONNECT_TIMEOUT_MS = 75_000
+        let watchdog: ReturnType<typeof setTimeout> | undefined
+
         return await new Promise<boolean>((resolve) => {
+            watchdog = setTimeout(() => {
+                if (this.connectedState) return
+                log.warn(
+                    'WhatsApp did not answer within %ds — closing the socket and retrying.',
+                    CONNECT_TIMEOUT_MS / 1000,
+                )
+                try {
+                    sock.end(undefined)
+                } catch {
+                    /* already gone */
+                }
+                resolve(false)
+            }, CONNECT_TIMEOUT_MS)
+            watchdog.unref?.()
+
             sock.ev.on('connection.update', (update: Partial<ConnectionState>) => {
                 const { connection, lastDisconnect, qr } = update
+                if (connection === 'open' || connection === 'close') clearTimeout(watchdog)
 
                 if (qr) {
                     this.events.onQr?.(qr)
@@ -460,6 +484,9 @@ export class Bot {
                     resolve(loggedOut)
                 }
             })
-        }).finally(() => clearInterval(sessionFixer))
+        }).finally(() => {
+            clearTimeout(watchdog)
+            clearInterval(sessionFixer)
+        })
     }
 }

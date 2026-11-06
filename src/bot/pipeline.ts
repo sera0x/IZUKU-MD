@@ -154,6 +154,10 @@ export function attachMessageHandler(sock: WASocket): void {
         for (const msg of messages) {
             try {
                 if (isBeforeBoot(msg)) {
+                    // Do not run it, but do cache it: a message sent just before a
+                    // restart used to be invisible to anti-delete, so deleting it
+                    // right after boot produced a notice with nothing under it.
+                    rememberMessage(msg, msg.key.participant ?? msg.key.remoteJid ?? '', { onlyIfMissing: true })
                     log.debug('skipping message stamped before boot (%s)', msg.key.id)
                     continue
                 }
@@ -413,15 +417,24 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
 
     if (!command) return
     if (stickerTrigger) log.info('sticker trigger %s from %s in %s', command.name, senderNumber, isGroup ? chat : 'dm')
+
+    // A sticker bound with `.setcmd` is a shortcut, not a conversation: the
+    // command runs and the bot says nothing of its own. Guard messages (usage,
+    // admin, cooldown) collapse into one ❌ reaction instead of a text reply.
+    const refuse = (text: string): Promise<unknown> =>
+        stickerTrigger
+            ? sock.sendMessage(chat, { react: { text: '❌', key: msg.key } }).catch(() => undefined)
+            : sendText(sock, chat, msg, text)
+
     if (runtime.mode === 'private' && !isSudo) return
     if (isGroup && !isOwner && db.gbanAny(chat, identities)) {
         const name = db.user(sender).name || pushNameOf(sock, msg) || senderNumber
-        await sendText(sock, chat, msg, '*' + name + '* you are banned from using ' + config.botName + ' in this group. \u274c')
+        await refuse('*' + name + '* you are banned from using ' + config.botName + ' in this group. \u274c')
         return
     }
     const modPass = isMod && command.modOk
     if (command.ownerOnly && !isOwner && !modPass) {
-        await sendText(sock, chat, msg, 'This command is owner-only.')
+        await refuse('This command is owner-only.')
         return
     }
 
@@ -431,20 +444,20 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     const isBotAdmin = isGroup ? isGroupAdmin(metadata, [botJid, sock.user?.lid ?? '']) : false
 
     if (command.groupOnly && !isGroup) {
-        await sendText(sock, chat, msg, 'This command only works in groups.')
+        await refuse('This command only works in groups.')
         return
     }
     if (command.adminOnly && !isAdmin && !isOwner && !modPass) {
-        await sendText(sock, chat, msg, 'Admins only.')
+        await refuse('Admins only.')
         return
     }
     if (command.botAdmin && !isBotAdmin) {
-        await sendText(sock, chat, msg, 'I need to be an admin to do that.')
+        await refuse('I need to be an admin to do that.')
         return
     }
 
     if (!isSudo && onCooldown(`${sender}:${command.name}`, command.cooldownMs ?? config.cooldownMs)) {
-        await sendText(sock, chat, msg, 'Slow down a little.')
+        await refuse('Slow down a little.')
         return
     }
 

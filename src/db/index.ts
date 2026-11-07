@@ -151,9 +151,9 @@ sqlite.exec(`
 
     CREATE TABLE IF NOT EXISTS groups (
         jid          TEXT PRIMARY KEY,
-        welcome      INTEGER NOT NULL DEFAULT 1,
-        goodbye      INTEGER NOT NULL DEFAULT 1,
-        antilink     INTEGER NOT NULL DEFAULT 1,
+        welcome      INTEGER NOT NULL DEFAULT 0,
+        goodbye      INTEGER NOT NULL DEFAULT 0,
+        antilink     INTEGER NOT NULL DEFAULT 0,
         antifake     INTEGER NOT NULL DEFAULT 0,
         antibadword  INTEGER NOT NULL DEFAULT 0,
         autosticker  INTEGER NOT NULL DEFAULT 0,

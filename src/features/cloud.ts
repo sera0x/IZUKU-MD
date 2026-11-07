@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
 import { restoreGames, snapshotGames } from './tictactoe.js'
+import { restoreChessGames, snapshotChessGames } from './chess.js'
 import { rawDb } from '../db/index.js'
 
 /**
@@ -22,6 +23,7 @@ const log = createLogger(config.logLevel, { scope: 'cloud' })
 
 const PREFIX = (process.env.CLOUD_PREFIX ?? 'izuku:').trim() || 'izuku:'
 const GAMES_KEY = `${PREFIX}ttt:games`
+const CHESS_KEY = `${PREFIX}chess:games`
 /** Cards, decks, wallets, clans and marriages. Kept separately from the stats
  * blob so a bad card row cannot block a win from being restored. */
 const STATE_KEY = `${PREFIX}tcg:state`
@@ -82,12 +84,13 @@ async function kvSet(key: string, value: unknown): Promise<boolean> {
 export async function restoreCloudState(): Promise<{ games: number; players: number }> {
     if (!available()) return { games: 0, players: 0 }
 
-    const [games, state] = await Promise.all([
+    const [games, chess, state] = await Promise.all([
         kvGet<unknown>(GAMES_KEY),
+        kvGet<unknown>(CHESS_KEY),
         kvGet<Partial<GameStateSnapshot>>(STATE_KEY),
     ])
 
-    const restoredGames = restoreGames(games)
+    const restoredGames = restoreGames(games) + restoreChessGames(chess)
     const cards = restoreGameState(state)
     if (restoredGames > 0 || cards > 0) {
         log.info('restored %d game(s) and %d card row(s) from the cloud store', restoredGames, cards)
@@ -105,11 +108,12 @@ async function flush(): Promise<void> {
     running = true
     try {
         dirty = false
-        const [games, state] = await Promise.all([
+        const [games, chess, state] = await Promise.all([
             kvSet(GAMES_KEY, snapshotGames()),
+            kvSet(CHESS_KEY, snapshotChessGames()),
             kvSet(STATE_KEY, snapshotGameState()),
         ])
-        if (!games || !state) dirty = true
+        if (!games || !chess || !state) dirty = true
     } finally {
         running = false
         if (dirty && available()) syncSoon()

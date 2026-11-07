@@ -122,7 +122,7 @@ const config = {
         antidelete: flag(process.env.ANTIDELETE, true),
         // group welcome/goodbye image cards (features/welcome.ts). When on, the
         // plain-text welcome/goodbye messages are skipped so there is one greeting.
-        welcomeCard: flag(process.env.WELCOME, true),
+        welcomeCard: flag(process.env.WELCOME, false),
         readCommands: flag(process.env.READ_MESSAGE, true),
         startupMessage: flag(process.env.STARTUP_MESSAGE, true),
     },
@@ -165,7 +165,7 @@ const config = {
 
     antilink: {
         values: csv(process.env.ANTILINK_VALUES, ['chat.whatsapp.com', 'wa.me', 't.me']),
-        action: text(process.env.ANTILINK_ACTION, 'warn') === 'remove' ? 'remove' : 'warn',
+        action: text(process.env.ANTILINK_ACTION, 'remove') === 'remove' ? 'remove' : 'warn',
     },
     badWords: csv(process.env.ANTI_BAD_WORD),
     blockedCountries: phoneNumbers(process.env.FAKE_COUNTRY_CODE),

@@ -6,7 +6,6 @@ import { answersHere } from '../features/active-bot.js'
 import { firstProcessedSighting } from '../features/message-store.js'
 import { runtime } from '../runtime.js'
 import { clearAfkOnActivity, notifyAfkMentions } from '../features/afk.js'
-import { enforceAntilink } from '../features/antilink.js'
 import { enforceBadWords } from '../features/badwords.js'
 import { awardMessageXp } from '../features/xp.js'
 import { matchFilter } from '../features/filters.js'
@@ -308,7 +307,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
             reply,
         }
 
-        if (await enforceAntilink({ ...guard, groupName: metadata?.subject ?? 'this group' })) return
         if (await enforceBadWords(guard)) return
 
         const content = unwrapMessage(msg.message)

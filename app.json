@@ -103,16 +103,6 @@
       "description": "Destination number when ANTI_DELETE=jid.",
       "required": false
     },
-    "ANTILINK_VALUES": {
-      "description": "Link patterns blocked by antilink, comma separated.",
-      "required": false,
-      "value": "chat.whatsapp.com,wa.me,t.me"
-    },
-    "ANTILINK_ACTION": {
-      "description": "remove or warn.",
-      "required": false,
-      "value": "remove"
-    },
     "ANTI_BAD_WORD": {
       "description": "Bad words to filter, comma separated. Empty = off.",
       "required": false
@@ -122,7 +112,7 @@
       "required": false
     },
     "WARN_COUNT": {
-      "description": "Warnings before antilink/badword action escalates.",
+      "description": "Warnings before the badword action escalates.",
       "required": false,
       "value": "3"
     },

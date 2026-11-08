@@ -76,28 +76,6 @@ ari({
 })
 
 ari({
-    name: 'antilink',
-    description: 'Toggle link removal in this group',
-    category: 'group',
-    usage: 'antilink on|off',
-    groupOnly: true,
-    adminOnly: true,
-    run: async (ctx) => {
-        const next = toggles(ctx.args[0])
-        if (next === undefined) {
-            const group = db.group(ctx.chat)
-            await ctx.reply(
-                `Antilink is ${state(group.antilink)} (action: *${config.antilink.action}*).\n` +
-                    `Blocked: ${config.antilink.values.join(', ')}`,
-            )
-            return
-        }
-        db.updateGroup(ctx.chat, { antilink: next })
-        await ctx.reply(`Antilink ${next ? 'enabled ✅' : 'disabled 🛑'}.`)
-    },
-})
-
-ari({
     name: 'antifake',
     description: 'Toggle removal of blocked country codes',
     category: 'group',

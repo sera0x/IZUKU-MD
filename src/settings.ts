@@ -114,18 +114,6 @@ const setters: Record<string, (value: string) => string> = {
     ANTI_CALL: applyFlag('antiCall'),
     READ_MESSAGE: applyFlag('readCommands'),
     STARTUP_MESSAGE: applyFlag('startupMessage'),
-    ANTILINK_ACTION: (value) => {
-        const action = value.toLowerCase()
-        if (action !== 'warn' && action !== 'remove') throw new Error('action must be warn or remove')
-        config.antilink.action = action
-        return action
-    },
-    ANTILINK_VALUES: (value) => {
-        const values = value.split(',').map((item) => item.trim()).filter(Boolean)
-        if (!values.length) throw new Error('provide at least one value')
-        config.antilink.values = values
-        return values.join(',')
-    },
     FAKE_COUNTRY_CODE: (value) => {
         const codes = value.split(',').map((item) => item.replace(/\D/g, '')).filter(Boolean)
         config.blockedCountries = codes
@@ -203,8 +191,6 @@ export function currentSettings(): Record<string, string> {
         ANTI_CALL: onOff(String(config.features.antiCall)),
         READ_MESSAGE: onOff(String(config.features.readCommands)),
         STARTUP_MESSAGE: onOff(String(config.features.startupMessage)),
-        ANTILINK_ACTION: config.antilink.action,
-        ANTILINK_VALUES: config.antilink.values.join(','),
         FAKE_COUNTRY_CODE: config.blockedCountries.join(','),
         ANTI_BAD_WORD: config.badWords.join(','),
     }

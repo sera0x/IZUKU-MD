@@ -50,8 +50,7 @@ ari({
         }
 
         const context = quotedContext(ctx.msg.message)
-        // A status reply often only points at the status; the content itself is
-        // the status message the bot already cached while it arrived.
+
         const statusMention = (context as { statusMentionMessageInfo?: unknown } | undefined)
             ?.statusMentionMessageInfo
         const statusReply = context?.remoteJid === 'status@broadcast' || Boolean(statusMention)

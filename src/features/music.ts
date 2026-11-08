@@ -42,11 +42,6 @@ async function encode(input: string, output: string, bitrate: string): Promise<v
     ], { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 })
 }
 
-/**
- * Search (or take a direct URL), download the best audio with yt-dlp,
- * convert to mp3 capped at 20 min and under the WhatsApp size limit.
- * Throws a short human-readable Error on failure. Always call cleanup().
- */
 export async function downloadTrack(query: string): Promise<Track> {
     const term = query.trim()
     if (!term) throw new Error('no query')
@@ -108,7 +103,7 @@ export async function downloadTrack(query: string): Promise<Track> {
 
         const buffer = await readFile(out)
         const duration = await probeDuration(out)
-        // remove the big raw source early
+
         await rm(raw, { force: true })
         return { buffer, thumb, title, artist, duration, bytes: size, sourceUrl, cleanup }
     } catch (err) {

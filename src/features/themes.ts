@@ -83,7 +83,7 @@ export function getTheme(name: string | undefined): Theme | undefined {
 }
 
 export function themeFor(name: string | undefined): Theme {
-    // No user-picked theme = plain menu: bot name only, no images.
+
     if (!name) return { ...defaultTheme, title: config.botName, botName: config.botName, footer: config.ownerName, images: [] }
     const theme = getTheme(name)
     if (!theme || theme.name === 'default') {

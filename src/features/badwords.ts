@@ -16,11 +16,6 @@ export interface BadWordInput {
     reply: (text: string) => Promise<unknown>
 }
 
-/**
- * Substring match, not a word-boundary one: this is meant to catch the obvious
- * cases ("fuck", "bitch") even when they are glued to punctuation, the same way
- * the antilink matcher works.
- */
 export function findBadWord(text: string): string | undefined {
     if (!config.badWords.length) return undefined
 
@@ -31,7 +26,6 @@ export function findBadWord(text: string): string | undefined {
     })
 }
 
-/** Returns true when the message was blocked, so the pipeline stops there. */
 export async function enforceBadWords(input: BadWordInput): Promise<boolean> {
     const settings = db.group(input.chat)
     if (!settings.antibadword || input.isAdmin) return false

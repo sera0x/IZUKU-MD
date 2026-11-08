@@ -4,18 +4,6 @@ import { jidNormalizedUser, type LIDMapping, type WASocket } from 'baileys'
 import { config } from '../config.ts'
 import { jidToNumber } from './helpers.js'
 
-/**
- * LID ↔ phone-number bridge.
- *
- * Baileys v7 delivers most senders as `@lid` JIDs. Some APIs (status read
- * receipts in particular) still expect the phone-number JID, so we keep a
- * small in-memory map that is seeded from:
- *
- *   1. the `lid-mapping-*.json` files in the auth folder,
- *   2. `lid-mapping.update` events from the live socket,
- *   3. alt JIDs (`participantAlt` / `remoteJidAlt`) on incoming messages.
- */
-
 const lidToPhone = new Map<string, string>()
 const phoneToLid = new Map<string, string>()
 
@@ -46,11 +34,6 @@ function addMapping(lid: string | null | undefined, phone: string | null | undef
     phoneToLid.set(phoneDigits, lidDigits)
 }
 
-/**
- * Read every `lid-mapping-*.json` file written by Baileys and merge it into
- * the in-memory maps. Mappings are only added, never cleared, so a reload
- * cannot lose a pair learned from a live event.
- */
 export function loadLidMappings(dir = config.sessionDir): void {
     authDirs.add(dir)
     if (!existsSync(dir)) return
@@ -73,22 +56,18 @@ export function loadLidMappings(dir = config.sessionDir): void {
                 .replace('.json', '')
 
             if (file.endsWith('_reverse.json')) {
-                // lid-mapping-<lid>_reverse.json contains the phone number.
+
                 addMapping(key, String(value))
             } else {
-                // lid-mapping-<phone>.json contains the LID.
+
                 addMapping(String(value), key)
             }
         } catch {
-            // ignore malformed or partially-written files
+
         }
     }
 }
 
-/**
- * Load the on-disk mappings and subscribe to live updates for this socket.
- * Safe to call once per socket (reconnects create a new socket).
- */
 export function attachLidMappings(sock: WASocket, dir = config.sessionDir): void {
     loadLidMappings(dir)
 
@@ -97,7 +76,7 @@ export function attachLidMappings(sock: WASocket, dir = config.sessionDir): void
             addMapping(mapping.lid, mapping.pn)
         })
     } catch {
-        // older Baileys without the event
+
     }
 }
 
@@ -117,10 +96,6 @@ function mappedPhone(jid: string): string {
     return phone ?? ''
 }
 
-/**
- * Synchronous phone-number digits for a JID. Returns an empty string when a
- * LID cannot be mapped yet.
- */
 export function phoneDigitsFor(jid: string | null | undefined): string {
     const clean = normalized(jid) || (jid ?? '')
     if (!clean) return ''
@@ -130,10 +105,6 @@ export function phoneDigitsFor(jid: string | null | undefined): string {
     return digits(jidToNumber(clean))
 }
 
-/**
- * Compare two JIDs as the same user even when one is a LID and the other a
- * phone-number JID. Falls back to raw digits when no mapping is known.
- */
 export function sameUser(a: string | null | undefined, b: string | null | undefined): boolean {
     if (!a || !b) return false
 
@@ -148,10 +119,6 @@ export function sameUser(a: string | null | undefined, b: string | null | undefi
     return jidToNumber(first) === jidToNumber(second)
 }
 
-/**
- * Resolve any JID to a phone-number JID (`…@s.whatsapp.net`).
- * Asks the live socket first when the in-memory map has no answer.
- */
 export async function phoneJidFor(sock: WASocket | undefined, jid: string | null | undefined): Promise<string> {
     const clean = normalized(jid) || (jid ?? '')
     if (!clean) return ''
@@ -174,10 +141,6 @@ export async function phoneJidFor(sock: WASocket | undefined, jid: string | null
     return ''
 }
 
-/**
- * LID JID (`…@lid`) for a phone number, when the pair is already known.
- * Bans are stored per JID form, so callers need both directions.
- */
 export function lidJidFor(jid: string | null | undefined): string {
     const number = digits(phoneDigitsFor(jid ?? '')) || digits(jidToNumber(jid ?? ''))
     if (!number) return ''
@@ -191,10 +154,6 @@ export function lidJidFor(jid: string | null | undefined): string {
     return lid ? `${lid}@lid` : ''
 }
 
-/**
- * Learn a LID ↔ phone pair from an incoming message. Many status/group
- * messages carry both forms in `participantAlt` / `remoteJidAlt`.
- */
 export function rememberIdentityPair(a: string | null | undefined, b: string | null | undefined): void {
     const first = normalized(a)
     const second = normalized(b)
@@ -204,7 +163,6 @@ export function rememberIdentityPair(a: string | null | undefined, b: string | n
     else if (second.endsWith('@lid') && first.endsWith('@s.whatsapp.net')) addMapping(second, first)
 }
 
-/** Exposed for diagnostics and tests. */
 export function lidMappingSize(): { lids: number; phones: number } {
     return { lids: lidToPhone.size, phones: phoneToLid.size }
 }

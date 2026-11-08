@@ -1,26 +1,14 @@
-// ============================================================
-//  lib/scrapers/youtube.js
-//  YouTube video downloader scraper
-// ============================================================
+
 
 import axiosRaw from 'axios'
 const axios = axiosRaw as any
 
-/**
- * Extract video ID from YouTube URL
- * @param {string} url - YouTube URL
- * @returns {string|null} - Video ID or null
- */
 function getVideoId(url: string) {
     const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
     const match = url.match(regex)
     return match ? match[1] : null
 }
 
-/**
- * Search YouTube and return the first video's URL, so a downloader can take
- * either a link or plain words.
- */
 export async function searchYoutube(query: string): Promise<string> {
     const response = await axios.get('https://www.youtube.com/results', {
         params: { search_query: query },
@@ -33,11 +21,6 @@ export async function searchYoutube(query: string): Promise<string> {
     return `https://www.youtube.com/watch?v=${match[1]}`
 }
 
-/**
- * Download YouTube video
- * @param {string} url - YouTube video URL
- * @returns {Promise<Object>} - Video info with download URLs
- */
 export async function youtubeDl(url: string) {
     try {
         console.log('[YT-SCRAPER] Starting scrape for:', url)
@@ -49,7 +32,6 @@ export async function youtubeDl(url: string) {
 
         console.log('[YT-SCRAPER] Video ID:', videoId)
 
-        // Method 1: Using cobalt.tools API
         try {
             const apiUrl = 'https://api.cobalt.tools/api/json'
 
@@ -82,11 +64,9 @@ export async function youtubeDl(url: string) {
             console.log('[YT-SCRAPER] cobalt.tools failed:', apiError.message)
         }
 
-        // Method 2: Using yt1s.com API
         try {
             console.log('[YT-SCRAPER] Trying yt1s.com API...')
 
-            // Step 1: Get video info
             const infoResponse = await axios.get('https://yt1s.com/api/ajaxSearch/index', {
                 params: {
                     q: url,
@@ -102,14 +82,12 @@ export async function youtubeDl(url: string) {
                 const mp4Links = infoResponse.data.links.mp4
                 const qualities = Object.keys(mp4Links)
 
-                // Get best quality (720p or highest available)
                 let bestQuality = qualities.includes('720') ? '720' :
                     qualities.includes('360') ? '360' :
                         qualities[0] as string
 
                 const videoData = mp4Links[bestQuality]
 
-                // Step 2: Get download link
                 const convertResponse = await axios.get('https://yt1s.com/api/ajaxConvert/convert', {
                     params: {
                         vid: infoResponse.data.vid,

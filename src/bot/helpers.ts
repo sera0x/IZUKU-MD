@@ -12,22 +12,11 @@ const exec = promisify(execFile)
 const bundledFfmpeg = ffmpegPath as unknown as string | null
 export const FFMPEG = process.env.FFMPEG_PATH || bundledFfmpeg || 'ffmpeg'
 
-/**
- * Personal chat of the bot account itself. Owner notices (startup, update,
- * first link) go here instead of the operator's number: the operator keeps
- * owner commands through the anchor, but is never handed other people's
- * messages.
- */
 export function selfChatJid(sock: { user?: { id?: string } | null }): string {
     const number = (sock.user?.id ?? '').split('@')[0]?.split(':')[0] ?? ''
     return number ? `${number}@s.whatsapp.net` : ''
 }
 
-/**
- * Resolve with `fallback` when a promise takes too long or rejects. Some
- * WhatsApp queries (USync status) never settle when the server ignores them,
- * which would leave a command hanging with no reply.
- */
 export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
     return new Promise<T>((resolve) => {
         let done = false
@@ -114,11 +103,6 @@ export interface QuotedMedia {
     type: 'image' | 'video' | 'audio' | 'document' | 'sticker'
 }
 
-/**
- * Find the context of the message being replied to. Some client versions wrap
- * status replies so the quote is not in the first contextInfo; walk the tree
- * until a context carrying a quoted message shows up.
- */
 export function quotedContext(
     message: proto.IMessage | null | undefined,
 ): proto.IContextInfo | undefined {
@@ -142,7 +126,6 @@ export function quotedContext(
         return undefined
     }
 
-    // Status replies carry the status key instead of a quoted message.
     return walk(message, 0) ?? direct
 }
 
@@ -228,10 +211,6 @@ export const toImage = (buffer: Buffer, inputExt: string): Promise<Buffer> =>
 export const toMp3 = (buffer: Buffer, inputExt: string): Promise<Buffer> =>
     convert(buffer, inputExt, 'mp3', ['-vn', '-ac', '2', '-b:a', '128k'])
 
-// Cap animated card art at 640px wide, keep aspect ratio, even dimensions so WhatsApp renders it in proportion.
-// ffmpeg splits a filtergraph on commas, so the comma inside min() must be
-// escaped — unescaped it fails with "No such filter: '640)/2)*2:-2'" and every
-// animated card silently fell back to generated art.
 const MP4_ARGS = ['-movflags', 'faststart', '-pix_fmt', 'yuv420p', '-crf', '18', '-vf', 'scale=trunc(min(iw\\,640)/2)*2:-2']
 
 async function webpFrameCount(buffer: Buffer): Promise<number> {
@@ -254,8 +233,7 @@ export async function toMp4(buffer: Buffer, inputExt: string): Promise<Buffer> {
 
     const pages = await webpFrameCount(buffer)
     if (pages > 1) {
-        // ffmpeg's WebP decoder rejects animated WhatsApp stickers. libvips
-        // (sharp) reads every frame, so give ffmpeg an animated GIF instead.
+
         const gif = await webpToGif(buffer)
         return convert(gif, 'gif', 'mp4', MP4_ARGS)
     }
@@ -263,8 +241,7 @@ export async function toMp4(buffer: Buffer, inputExt: string): Promise<Buffer> {
     try {
         return await convert(buffer, 'webp', 'mp4', MP4_ARGS)
     } catch (error) {
-        // Some static WebP files also trip the bundled decoder. Retry through
-        // libvips before surfacing the original ffmpeg error.
+
         try {
             const gif = await webpToGif(buffer)
             return await convert(gif, 'gif', 'mp4', MP4_ARGS)

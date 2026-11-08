@@ -1,5 +1,5 @@
-// Wraps each outgoing text line in WhatsApp bold (*...*).
-// Lines that already contain any * are partially formatted and left untouched.
+
+
 export function boldLine(line: string): string {
     const m = line.match(/^(\s*)(.*?)(\s*)$/s)
     const lead = m?.[1] ?? ''
@@ -17,7 +17,6 @@ export function isMarkerLog(text: string): boolean {
     return /^\s*\[(image|audio)\]/i.test(text)
 }
 
-// Startup/online broadcast (src/index.ts) is already formatted and must go out exactly as composed.
 export function isStartupBroadcast(text: string): boolean {
     return /^\*[^*\n]+\* is online ✅/.test(text.trimStart())
 }

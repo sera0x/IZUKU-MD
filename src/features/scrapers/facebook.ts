@@ -1,21 +1,12 @@
-// ============================================================
-//  lib/scrapers/facebook.js
-//  Facebook video downloader scraper
-// ============================================================
+
 
 import axiosRaw from 'axios'
 const axios = axiosRaw as any
 
-/**
- * Download Facebook video
- * @param {string} url - Facebook video URL
- * @returns {Promise<Object>} - Video info with download URLs
- */
 export async function facebookDl(url: string) {
     try {
         console.log('[FB-SCRAPER] Starting scrape for:', url)
 
-        // Handle fb.watch redirects
         if (url.includes('fb.watch')) {
             console.log('[FB-SCRAPER] Resolving fb.watch redirect...')
             try {
@@ -35,7 +26,6 @@ export async function facebookDl(url: string) {
             }
         }
 
-        // Fetch the Facebook page with better headers
         const response = await axios.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -61,11 +51,9 @@ export async function facebookDl(url: string) {
         const html = response.data
         console.log('[FB-SCRAPER] Page fetched, parsing...')
 
-        // Try to extract video URLs
         let sdUrl = null
         let hdUrl = null
 
-        // Look for playable_url in the HTML
         const playableUrlMatch = html.match(/"playable_url":"([^"]+)"/g)
         if (playableUrlMatch && playableUrlMatch.length > 0) {
             const sdMatch = playableUrlMatch[0].match(/"playable_url":"([^"]+)"/)
@@ -81,7 +69,6 @@ export async function facebookDl(url: string) {
             }
         }
 
-        // Try playable_url_quality_hd
         if (!hdUrl) {
             const hdMatch = html.match(/"playable_url_quality_hd":"([^"]+)"/)
             if (hdMatch) {
@@ -89,7 +76,6 @@ export async function facebookDl(url: string) {
             }
         }
 
-        // Try browser_native URLs
         if (!hdUrl) {
             const browserHdMatch = html.match(/"browser_native_hd_url":"([^"]+)"/)
             if (browserHdMatch) {
@@ -104,21 +90,18 @@ export async function facebookDl(url: string) {
             }
         }
 
-        // Extract title
         let title = null
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/)
         if (titleMatch) {
             title = titleMatch[1].replace(/&#(\d+);/g, (_match: any, dec: any) => String.fromCharCode(dec))
         }
 
-        // Extract thumbnail
         let thumbnail = null
         const thumbnailMatch = html.match(/"preferred_thumbnail":{"image":{"uri":"([^"]+)"/)
         if (thumbnailMatch) {
             thumbnail = thumbnailMatch[1].replace(/\\u0025/g, '%').replace(/\\\//g, '/').replace(/\\u0026/g, '&')
         }
 
-        // Extract duration
         let duration = null
         const durationMatch = html.match(/"playable_duration_in_ms":(\d+)/)
         if (durationMatch) {

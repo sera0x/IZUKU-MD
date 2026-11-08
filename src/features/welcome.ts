@@ -30,7 +30,6 @@ const escapeXml = (value: string): string =>
 
 const clip = (value: string, max: number): string => (value.length > max ? `${value.slice(0, max - 1)}…` : value)
 
-// Pure #000 base. Falls back to an in-memory black canvas if the bg file is missing.
 async function background(path: string): Promise<Buffer> {
     if (existsSync(path)) return sharp(path).resize(WIDTH, HEIGHT).png().toBuffer()
     return sharp({ create: { width: WIDTH, height: HEIGHT, channels: 3, background: '#000000' } }).png().toBuffer()
@@ -52,10 +51,6 @@ async function renderCard(kind: 'WELCOME' | 'GOODBYE', name: string, group: stri
         .toBuffer()
 }
 
-/**
- * Sends the welcome (add) or goodbye (remove) image card to the group.
- * Called from the group-participants.update handler after the guard checks.
- */
 export async function sendParticipantCards(
     sock: WASocket,
     update: Update,
@@ -64,7 +59,7 @@ export async function sendParticipantCards(
     if (!config.features.welcomeCard) return
     const action = update.action
     if (action !== 'add' && action !== 'remove') return
-    // Standing rule: no welcome/goodbye in any group without an active .agb live record.
+
     if (!db.gameActive(update.id)) return
 
     const group = cleanGroupName(metadata.subject ?? '') || 'this group'
@@ -72,7 +67,7 @@ export async function sendParticipantCards(
     const ids = update.participants.map(participantId)
 
     for (const jid of ids) {
-        // Prefer a real name: lid -> pn mapping, then the stored pushname.
+
         const displayName = await (async (): Promise<string> => {
             try {
                 if (jid.endsWith('@lid')) {
@@ -85,7 +80,7 @@ export async function sendParticipantCards(
                 const row = db.user(jid)
                 if (row?.name && !/^\d+$/.test(row.name)) return row.name
             } catch {
-                /* fall through to the number */
+
             }
             return ''
         })()
@@ -98,12 +93,9 @@ export async function sendParticipantCards(
         })
         if (!card) continue
 
-        // WhatsApp needs a file path/url for the image; write a temp copy and drop it after send.
         const path = join(DATA_DIR, `card_${kind.toLowerCase()}_${Date.now()}_${number}.png`)
         writeFileSync(path, card)
-        // Proper WhatsApp mention: caption must write @<phone_number>
-        // and mentions array must carry the exact phone JID so WhatsApp
-        // turns it into a clickable blue tag showing their saved/push name.
+
         const resolvedPn = jid.endsWith('@lid')
             ? await sock.signalRepository?.lidMapping?.getPNForLID(jid).catch(() => null)
             : jid
@@ -125,7 +117,7 @@ export async function sendParticipantCards(
             try {
                 unlinkSync(path)
             } catch {
-                /* ignore */
+
             }
         }
     }

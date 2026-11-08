@@ -24,11 +24,6 @@ const pending = new Map<string, PendingPoll>()
 const keyOf = (chat: string, id: string): string => `${chat}|${id}`
 const hashOf = (value: string): string => createHash('sha256').update(value).digest('hex')
 
-/**
- * Poll vote encryption uses a JID in its signature. Depending on the account
- * and chat type WhatsApp may use the device form, the normalised form, the
- * phone JID or the LID. Keep both forms for every candidate.
- */
 const jidVariants = (jids: Array<string | null | undefined>): string[] =>
     [
         ...new Set(
@@ -165,8 +160,6 @@ export async function handlePollUpdate(
         .map((hash) => entry.options.find((option) => hashOf(option) === hash))
         .filter((option): option is string => Boolean(option))
 
-    // Prefer the phone alias so per-user settings still resolve when a group
-    // vote arrives as a LID without a participantAlt.
     const phoneSender = [msgKey.participantAlt, msgKey.remoteJidAlt, matchedVoter, sender, voter]
         .filter((jid): jid is string => typeof jid === 'string' && jid.length > 0)
         .map((jid) => jidNormalizedUser(jid))

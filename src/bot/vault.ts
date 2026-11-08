@@ -16,15 +16,6 @@ const VERSION = 'v1'
 const envFlag = (name: string): boolean =>
     ['1', 'true', 'yes', 'on'].includes((process.env[name] ?? '').trim().toLowerCase())
 
-/**
- * Key that ties the stored WhatsApp session to this deployment.
- *
- * The session on disk is encrypted with it, so copying `data/session` (or
- * shipping a `SESSION_ID` around) produces a folder that cannot be opened on
- * another install: that install generates its own key. Set `DEPLOYMENT_KEY`
- * yourself to move a session on purpose; `SESSION_VAULT=off` disables the
- * encryption entirely.
- */
 export function deploymentKey(): string {
     const configured = (process.env.DEPLOYMENT_KEY ?? '').trim()
     if (configured.length >= 16) return configured
@@ -64,9 +55,6 @@ const cipherKey = (secret: string): Buffer =>
 
 type Buffered = { type?: string; data?: unknown }
 
-// Credentials carry key material as Buffers. Plain JSON turns those into
-// `{ type: 'Buffer', data: [...] }`, and a noise key restored that way makes the
-// handshake allocate NaN bytes. These mirror Baileys' BufferJSON helpers.
 const replacer = (_key: string, value: unknown): unknown => {
     if (Buffer.isBuffer(value) || value instanceof Uint8Array || (value as Buffered | null)?.type === 'Buffer') {
         const raw = (value as Buffered | null)?.data ?? value
@@ -114,7 +102,6 @@ const vaultEnabled = (): boolean => !envFlag('SESSION_VAULT_OFF')
 const sealedPath = (): string => join(config.sessionDir, SEALED_CREDS)
 const plainPath = (): string => join(config.sessionDir, PLAIN_CREDS)
 
-/** Tighten permissions on the files that carry the session. */
 export function hardenPermissions(): void {
     const targets: { path: string; mode: number }[] = [
         { path: config.sessionDir, mode: 0o700 },
@@ -128,18 +115,11 @@ export function hardenPermissions(): void {
         try {
             if (existsSync(target.path)) chmodSync(target.path, target.mode)
         } catch {
-            // best effort — a read-only volume is not a reason to fail startup
+
         }
     }
 }
 
-/**
- * Load the stored credentials.
- *
- * A sealed file that cannot be opened belongs to a different deployment. That
- * is refused loudly rather than silently starting a fresh pairing: pairing
- * again would throw away the only copy of a real session.
- */
 export function loadCreds(): AuthenticationCreds | null {
     mkdirSync(config.sessionDir, { recursive: true })
 
@@ -179,11 +159,9 @@ export function writeCreds(creds: AuthenticationCreds): void {
     writeFileSync(temporary, encrypt(deploymentKey(), JSON.stringify(creds, replacer)), { mode: 0o600 })
     renameSync(temporary, target)
 
-    // The plaintext copy is only ever a migration leftover.
     if (existsSync(plainPath())) rmSync(plainPath(), { force: true })
 }
 
-/** Encrypt credentials left in plaintext by an older version. */
 export function migrateCreds(): void {
     if (!vaultEnabled() || existsSync(sealedPath()) || !existsSync(plainPath())) return
 

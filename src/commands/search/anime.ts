@@ -103,7 +103,7 @@ ari({
                 await ctx.replyImage(cover, caption)
                 return
             } catch {
-                // fall through to text-only
+
             }
         }
         await ctx.reply(caption)

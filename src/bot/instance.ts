@@ -3,15 +3,6 @@ import { dirname, join } from 'node:path'
 import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
 
-/**
- * Single-instance lease.
- *
- * Two copies of the same deployment on one machine fight over the same
- * credentials: WhatsApp answers with `connectionReplaced`, sessions get
- * invalidated and the bot looks randomly broken. A second copy now refuses to
- * start instead, which also makes it obvious when someone cloned the folder.
- */
-
 const log = createLogger(config.logLevel, { scope: 'instance' })
 const lockPath = join(dirname(config.dbPath), 'instance.lock')
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -23,7 +14,7 @@ function isAlive(pid: number): boolean {
         process.kill(pid, 0)
         return true
     } catch (error) {
-        // EPERM means the process exists but belongs to another user.
+
         return (error as NodeJS.ErrnoException).code === 'EPERM'
     }
 }
@@ -42,15 +33,13 @@ export function releaseInstance(): void {
         if (lockOwner() !== process.pid) return
         unlinkSync(lockPath)
     } catch {
-        // nothing to release
+
     }
 }
 
 export async function claimInstance(): Promise<void> {
     mkdirSync(dirname(lockPath), { recursive: true })
 
-    // A restart can overlap the previous process for a moment, so give it a
-    // few seconds to finish shutting down before calling it a second copy.
     for (let attempt = 0; attempt < 12; attempt += 1) {
         if (!existsSync(lockPath)) break
 

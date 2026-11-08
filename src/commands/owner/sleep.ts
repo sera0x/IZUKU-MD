@@ -5,12 +5,6 @@ import { activeBotFor, botRefs, normalizeBotRef, setActiveBot } from '../../feat
 const ownNumber = (sock: Parameters<typeof botRefs>[0]): string =>
     (sock?.user?.id ?? '').split('@')[0]?.split(':')[0] ?? ''
 
-/**
- * Several deployments of the bot can sit in the same group. `.sleep` puts every
- * bot there to sleep except the one the owner names — the others go quiet
- * without leaving the group, so the group can still be handed to another bot
- * with a single command.
- */
 ari({
     name: 'sleep',
     description: 'Put every bot in this group to sleep except one',
@@ -40,8 +34,6 @@ ari({
             return
         }
 
-        // A number nobody in the group owns would put every bot to sleep with
-        // no one left to answer, so check it before recording the choice.
         if (/^\d{6,}$/.test(wanted) && !refs.includes(wanted)) {
             const metadata = await ctx.groupMetadata().catch(() => undefined)
             const present = (metadata?.participants ?? []).some(
@@ -56,9 +48,7 @@ ari({
         }
 
         setActiveBot(ctx.chat, wanted)
-        // Every bot in the group receives this command and records the same
-        // choice, but only the chosen one says so — otherwise the confirmation
-        // would arrive once per deployment.
+
         if (!refs.includes(wanted)) return
         await ctx.reply(`The others are asleep. 😴 *${config.botName}* answers here now.\nUse *${ctx.prefix}sleep off* to wake them.`)
     },

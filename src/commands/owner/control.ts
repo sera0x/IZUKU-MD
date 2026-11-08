@@ -77,7 +77,7 @@ ari({
     run: async (ctx) => {
         await ctx.reply('Restarting...')
         writeFileSync('data/restart', '1')
-        // Drain in-flight sends, then exit 0; pm2 restarts the process.
+
         void finishAndExit('restart command')
     },
 })

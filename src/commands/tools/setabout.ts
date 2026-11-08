@@ -22,10 +22,7 @@ ari({
 
         try {
             await ctx.sock.updateProfileStatus(text)
-            // WhatsApp does not surface the result of this write synchronously,
-            // so confirm immediately instead of blocking on a phone sync that may
-            // be slow or offline. The older readback loop here was the reason the
-            // bot kept saying "kept the old about" when WhatsApp accepted it.
+
             await ctx.reply('About status updated ✅')
         } catch (error) {
             await ctx.reply(`WhatsApp rejected the about update: ${(error as Error).message} 🛑`)

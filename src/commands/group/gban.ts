@@ -4,8 +4,6 @@ import { db } from '../../db/index.js'
 import { identityAliases, normalizeTarget, resolveTarget, tagOf } from '../../bot/group-utils.js'
 import { jidToNumber } from '../../bot/helpers.js'
 
-
-// Reason = every word that is not the tag (@...), a raw number target, or a -Nd duration flag.
 const daysOf = (args: string[]): number | null => {
     const m = args.find((arg) => /^-\d{1,3}d?$/.test(arg))
     if (!m) return null
@@ -16,7 +14,6 @@ const reasonOf = (args: string[]): string => {
     const words = args.filter((arg) => !arg.startsWith('@') && !/^\d{7,}$/.test(arg) && !/^-\d{1,3}d?$/.test(arg))
     return words.join(' ').trim() || 'no reason'
 }
-
 
 ari({
     name: 'gban',
@@ -44,8 +41,6 @@ ari({
         const expiresAt = days ? Date.now() + days * 24 * 60 * 60 * 1000 : null
         const banner = ctx.sender
 
-        // Store every form of the account (phone JID and LID) so the check in
-        // the pipeline matches however WhatsApp reports the sender.
         const aliases = await identityAliases(ctx, raw)
         const forms = new Set([raw, target, ...aliases].filter(Boolean))
         for (const jid of forms) db.gbanAdd(ctx.chat, jid, reason, ctx.sender, expiresAt)
@@ -54,8 +49,7 @@ ari({
             .sendMessage(
                 ctx.chat,
                 {
-                    // @digits + mentions lets WhatsApp render the push/contact
-                    // name instead of a stored name that can go stale.
+
                     text: `${tagOf(undefined, target)} has been banned by ${tagOf(undefined, banner)}${days ? ` for ${days} day${days === 1 ? '' : 's'}` : ''}. Reason: ${reason} 🛑`,
                     mentions: [target, banner],
                 },

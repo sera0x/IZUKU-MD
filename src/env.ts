@@ -1,8 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-// config.env is the current name; .env stays supported so an install that has
-// not been renamed yet keeps working.
 const ENV_FILES = ['config.env', '.env']
 
 function defaultEnvFile(): string {
@@ -31,9 +29,7 @@ export function loadEnvFile(file = defaultEnvFile()): void {
         if ((quote === '"' || quote === "'") && value.length > 1 && value.endsWith(quote)) {
             value = value.slice(1, -1)
         } else {
-            // Standard dotenv behaviour: drop a trailing `  # comment`. Without
-            // this, `ANTI_DELETE=same  # off|same` became a mode that matched
-            // nothing and silently disabled the feature.
+
             const comment = value.search(/\s#/)
             if (comment !== -1) value = value.slice(0, comment).trim()
         }

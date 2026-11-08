@@ -23,9 +23,6 @@ ari({
         const label = name || jidToNumber(target)
         const groupName = ctx.isGroup ? (await ctx.groupMetadata())?.subject : undefined
 
-        // Clear the ban for every form of the account (phone JID and LID).
-        // Clearing only one left the LID flagged, so the add-event guard kicked
-        // the user straight back out with a goodbye message.
         const aliases = await identityAliases(ctx, raw)
         for (const jid of new Set([raw, target, ...aliases])) db.ban(jid, false)
 

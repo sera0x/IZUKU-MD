@@ -31,9 +31,6 @@ ari({
         const subject = ctx.isGroup ? (await ctx.groupMetadata())?.subject : undefined
         const groupName = subject ? cleanGroupName(subject) : undefined
 
-        // Ban every form of the account (phone JID and LID), otherwise the
-        // auto-kick guard can still see one of them as unbanned and let them
-        // back in, or ban them again under the form they rejoin with.
         const aliases = await identityAliases(ctx, raw)
         for (const jid of new Set([raw, target, ...aliases])) db.ban(jid, true)
 

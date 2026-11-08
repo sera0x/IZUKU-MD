@@ -1,5 +1,4 @@
-// Pinterest downloader: the pin page carries the media URLs in its own JSON
-// (video_url for video pins, og:image for stills), so no API key is needed.
+
 
 import axiosRaw from 'axios'
 import { metaContent } from './imgur.js'
@@ -28,11 +27,6 @@ export interface PinHit {
     pin?: string
 }
 
-/**
- * Search Pinterest for pins. Pinterest's own search resource answers without a
- * key when the request looks like the web client's, so `.pindl <words>` can
- * fall back to a search whenever the argument is not a link.
- */
 export async function pinterestSearch(query: string, limit = 5): Promise<PinHit[]> {
     const data = {
         options: { query, scope: 'pins', page: null, bookmarks: [] as string[] },
@@ -84,7 +78,6 @@ export async function pinterestDl(url: string) {
     const video = metaContent(html, 'og:video') ?? firstMatch(html, [/"video_url":"([^"]+)"/])
     if (video) return { url: video, type: 'video', caption }
 
-    // "orig" is the full-size file; og:image is the 736px preview.
     const image =
         firstMatch(html, [/:\{"orig":\{"url":"([^"]+)"/]) ??
         metaContent(html, 'og:image') ??

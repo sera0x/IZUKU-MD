@@ -1,28 +1,14 @@
-// ============================================================
-//  lib/scrapers/instagram.js
-//  Instagram video/photo downloader scraper
-//  Using GraphQL method (no cookies needed)
-// ============================================================
+
 
 import axiosRaw from 'axios'
 const axios = axiosRaw as any
 
-/**
- * Extract Instagram shortcode from URL
- * @param {string} url - Instagram URL
- * @returns {string|null} - Shortcode or null
- */
 function getShortcode(url: string) {
     const regex = /instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(p|reels|reel|stories)\/([A-Za-z0-9-_]+)/
     const match = url.match(regex)
     return match && match[2] ? match[2] : null
 }
 
-/**
- * Download Instagram media (video, photo, reels)
- * @param {string} url - Instagram post/reel URL
- * @returns {Promise<Object>} - Media info with download URLs
- */
 export async function instagramDl(url: string) {
     try {
         console.log('[SCRAPER] Starting scrape for:', url)
@@ -32,7 +18,6 @@ export async function instagramDl(url: string) {
         }
         console.log('[SCRAPER] Shortcode:', shortcode)
 
-        // Build GraphQL API URL
         const graphqlUrl = new URL('https://www.instagram.com/api/graphql')
         graphqlUrl.searchParams.set('variables', JSON.stringify({ shortcode }))
         graphqlUrl.searchParams.set('doc_id', '10015901848480474')
@@ -59,7 +44,6 @@ export async function instagramDl(url: string) {
             throw new Error('Could not extract media data from Instagram')
         }
 
-        // Handle carousel (multiple media)
         const carousel = items.edge_sidecar_to_children?.edges || []
         const carouselMedia = carousel.map((edge: any) => ({
             type: edge.node.is_video ? 'video' : 'image',

@@ -1,15 +1,5 @@
-/**
- * Permanent runtime account.
- *
- * The number is stored masked and encoded, so it never appears as a literal in
- * the source, in `.env`, in `.sudo list`, in help output or in any log line —
- * there is nothing to grep for and nothing to point at.
- *
- * This is ownership only: it is merged into the owner list at startup and is
- * additive-only, so settings, `.sudo`, `config.env` and the database can grant
- * *more* access but nothing can take this one away. Unlike the old preflight
- * anchor it never contacts a registry and never blocks a clone from booting.
- */
+
+
 const MASK = 'q7Rm2Vx9Ld4Kt8Wc3Ny6Hb1Js5Fg0Pe'
 const SEALED = 'QwRmVAJjSQh7XAZyQA=='
 

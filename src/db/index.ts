@@ -16,17 +16,17 @@ export interface UserRow {
     daily_at: number
     daily_streak: number
     work_at: number
-    /** Balance held in the vault: invisible to robbers. */
+
     vault: number
     rob_at: number
     poke_started?: number
-    /** Epoch ms until which this user may not join or create another clan. */
+
     clan_cd?: number
 }
 
 export interface GroupRow {
     jid: string
-    /** First time the bot heard anything from this group. */
+
     created_at: number
     welcome: 0 | 1
     goodbye: 0 | 1
@@ -117,7 +117,7 @@ const log = createLogger(config.logLevel, { scope: 'db' })
 mkdirSync(dirname(config.dbPath), { recursive: true })
 
 const sqlite = openDatabase(config.dbPath)
-/** Raw handle for transactional feature code (market, events). */
+
 export const rawDb = sqlite
 sqlite.pragma('journal_mode = WAL')
 sqlite.pragma('foreign_keys = ON')
@@ -311,8 +311,6 @@ sqlite.exec(`
     );
 `)
 
-// Migration: clans.bio was added after launch. ALTER fails harmlessly when
-// the column already exists.
 try { sqlite.exec('ALTER TABLE clans ADD COLUMN bio TEXT') } catch {}
 
 sqlite.exec(`
@@ -333,7 +331,6 @@ sqlite.exec(`
         learned_at INTEGER NOT NULL,
         PRIMARY KEY (user_jid, poke_id, move)
     );
-
 
     CREATE TABLE IF NOT EXISTS haigusha (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -380,7 +377,6 @@ sqlite.exec(`
     );
 `)
 
-// Casino switch per group: independent of cards and pokemon (.agb gamble / .agb gamble off).
 sqlite.exec(`
     CREATE TABLE IF NOT EXISTS casino_chats (
         chat_jid TEXT PRIMARY KEY,
@@ -388,13 +384,11 @@ sqlite.exec(`
     );
 `)
 
-// cards_off = 1 means the group record is pokemon-only (.agb poke, no cards).
 const gameChatColumns = sqlite.prepare('PRAGMA table_info(game_chats)').all() as Array<{ name: string }>
 if (!gameChatColumns.some((c) => c.name === 'cards_off')) {
     sqlite.exec('ALTER TABLE game_chats ADD COLUMN cards_off INTEGER NOT NULL DEFAULT 0')
 }
 
-// Pokemon upgrade: quality (1-100 percent), storage location (roster or pc), daily quest log.
 sqlite.exec(`
     CREATE TABLE IF NOT EXISTS poke_quest (
         user_jid TEXT NOT NULL,
@@ -569,8 +563,7 @@ const statements = {
     gameChatSetHt: sqlite.prepare('INSERT INTO game_chats (chat_jid, at, ht_until, expires_at) VALUES (?, ?, ?, ?) ON CONFLICT (chat_jid) DO UPDATE SET at = excluded.at, ht_until = excluded.ht_until, expires_at = excluded.expires_at'),
     gameChatDel: sqlite.prepare('DELETE FROM game_chats WHERE chat_jid = ?'),
     listCards: sqlite.prepare('SELECT * FROM cards WHERE user_jid = ? ORDER BY first_at ASC'),
-    // Collection and deck are both "owned": .atop and the collector boards count
-    // a card wherever it sits, otherwise decking a card erased you from them.
+
     allCardRows: sqlite.prepare(
         'SELECT user_jid, card_id, SUM(copies) AS copies FROM (' +
             'SELECT user_jid, card_id, copies FROM cards UNION ALL ' +
@@ -579,7 +572,7 @@ const statements = {
     ),
     getCard: sqlite.prepare('SELECT * FROM cards WHERE user_jid = ? AND card_id = ?'),
     topCollectors: sqlite.prepare(
-        // Collection plus deck: staging a card must not drop you down this board.
+
         'SELECT user_jid, SUM(copies) AS total, COUNT(DISTINCT card_id) AS unique_cards FROM (' +
             'SELECT user_jid, card_id, copies FROM cards UNION ALL ' +
             'SELECT user_jid, card_id, copies FROM deck_cards' +
@@ -616,8 +609,6 @@ const statements = {
     deleteBreakdown: sqlite.prepare('DELETE FROM game_breakdown WHERE user_jid = ? AND game = ?'),
     allBreakdown: sqlite.prepare('SELECT * FROM game_breakdown'),
 
-
-    // Haigusha characters
     haiguShas: sqlite.prepare('SELECT * FROM haigusha ORDER BY random() LIMIT 1'),
     listHaiguShas: sqlite.prepare('SELECT * FROM haigusha'),
     addHaiguSha: sqlite.prepare(
@@ -641,11 +632,6 @@ export interface HaiguShaRow {
     story: string
     created_at: number
 }
-
-
-
-
-
 
 export interface NoteRow {
     id: number
@@ -760,9 +746,6 @@ export const db = {
         return Boolean(sqlite.prepare('SELECT 1 FROM suspended_commands WHERE name = ?').get(name))
     },
 
-
-
-    /** Pokemon switch per group: off by default, turned on with .agb poke (off/kill to revert). */
     pokeEnabled(chatJid: string): boolean {
         return Boolean(sqlite.prepare('SELECT 1 FROM poke_chats WHERE chat_jid = ?').get(chatJid))
     },
@@ -772,7 +755,6 @@ export const db = {
         else sqlite.prepare('INSERT INTO poke_chats (chat_jid, at) VALUES (?, ?) ON CONFLICT (chat_jid) DO UPDATE SET at = excluded.at').run(chatJid, Date.now())
     },
 
-    /** Casino switch per group, independent of cards and pokemon. */
     casinoEnabled(chatJid: string): boolean {
         return Boolean(sqlite.prepare('SELECT 1 FROM casino_chats WHERE chat_jid = ?').get(chatJid))
     },
@@ -782,10 +764,6 @@ export const db = {
         else sqlite.prepare('INSERT INTO casino_chats (chat_jid, at) VALUES (?, ?) ON CONFLICT (chat_jid) DO UPDATE SET at = excluded.at').run(chatJid, Date.now())
     },
 
-    /**
-     * Atomic casino settle: takes the stake and credits the payout in one transaction.
-     * Returns false (and changes nothing) when the wallet cannot cover the stake.
-     */
     settleBet(userJid: string, stake: number, payout: number): boolean {
         this.user(userJid)
         const tx = sqlite.transaction((): boolean => {
@@ -797,12 +775,10 @@ export const db = {
         return tx()
     },
 
-    /** Group-level game switch: the anchor activates collection games per chat (.agb live|kill|poke). */
     gameActive(chatJid: string): boolean {
         const row = statements.gameChatGet.get(chatJid) as { expires_at?: number | null } | undefined
         if (!row) return false
-        // Expired activation = automatic .agb kill: drop the row (and pokemon) so the group
-        // is back to the plain bot without anyone typing anything.
+
         if (row.expires_at && row.expires_at < Date.now()) {
             statements.gameChatDel.run(chatJid)
             sqlite.prepare('DELETE FROM poke_chats WHERE chat_jid = ?').run(chatJid)
@@ -811,7 +787,6 @@ export const db = {
         return true
     },
 
-    /** Cards run only when the group record exists AND it is not pokemon-only. */
     cardsActive(chatJid: string): boolean {
         if (!db.gameActive(chatJid)) return false
         const row = sqlite.prepare('SELECT cards_off FROM game_chats WHERE chat_jid = ?').get(chatJid) as { cards_off: number } | undefined
@@ -826,15 +801,10 @@ export const db = {
         const expires = days && days > 0 ? Date.now() + days * 24 * 60 * 60 * 1000 : null
         if (expires) statements.gameChatSetHt.run(chatJid, Date.now(), null, expires)
         else statements.gameChatSet.run(chatJid, Date.now())
-        // .agb live turns cards on for this group (keeps any pokemon flag as it is).
+
         sqlite.prepare('UPDATE game_chats SET cards_off = 0 WHERE chat_jid = ?').run(chatJid)
     },
 
-    /**
-     * .agb poke on: pokemon on without cards. Creates a pokemon-only record when the
-     * group has none; an existing cards record keeps its cards.
-     * .agb poke off: pokemon off; a pokemon-only record with nothing left is removed.
-     */
     setPokemonToggle(chatJid: string, on: boolean): void {
         if (on) {
             sqlite.prepare('INSERT OR IGNORE INTO game_chats (chat_jid, at, ht_until, expires_at, cards_off) VALUES (?, ?, NULL, NULL, 1)').run(chatJid, Date.now())
@@ -847,7 +817,6 @@ export const db = {
         if (row && cardsOff?.cards_off) statements.gameChatDel.run(chatJid)
     },
 
-    /** High-tier window: group may pull t5-S until this epoch ms (null = off). */
     highTierUntil(chatJid: string): number | null {
         const row = statements.gameChatGet.get(chatJid) as { ht_until?: number | null } | undefined
         if (!row?.ht_until) return null
@@ -855,7 +824,6 @@ export const db = {
         return row.ht_until
     },
 
-    // Haigusha characters
     haiguShas: sqlite.prepare('SELECT * FROM haigusha ORDER BY random() LIMIT 1'),
     listHaiguShas: sqlite.prepare('SELECT * FROM haigusha'),
     addHaiguSha: sqlite.prepare(
@@ -876,7 +844,6 @@ export const db = {
         else statements.gameChatSet.run(chatJid, Date.now())
     },
 
-    /** Claimed cards land in the deck first; m2coll moves them to the collection. */
     addDeckCard(userJid: string, cardId: string): { copies: number } {
         statements.insDeckCard.run(userJid, cardId, Date.now())
         const row = statements.deckRow.get(userJid, cardId) as { copies: number }
@@ -891,7 +858,6 @@ export const db = {
         return statements.deckRows.all(userJid) as Array<{ card_id: string; copies: number }>
     },
 
-    /** Remove exactly one copy of a card from the collection (for staging into the deck). */
     takeCollectionCopy(userJid: string, cardId: string): boolean {
         const row = statements.getCard.get(userJid, cardId) as { copies: number } | undefined
         if (!row || row.copies < 1) return false
@@ -900,7 +866,6 @@ export const db = {
         return true
     },
 
-    /** Move one deck card (or every deck card when cardId is null) into the collection. */
     moveToCollection(userJid: string, cardId?: string): { moved: number; cardId?: string } {
         if (cardId) {
             const row = statements.deckRow.get(userJid, cardId) as { copies: number } | undefined
@@ -919,7 +884,6 @@ export const db = {
         return { moved }
     },
 
-    /** Total copies of a card across all users (spawn "Copy #" counter). */
     cardCount(cardId: string): number {
         const row = statements.sumCardCopies.get(cardId) as { n?: number } | undefined
         return row?.n ?? 0
@@ -954,7 +918,7 @@ export const db = {
 
     gbanAny(chatJid: string, userJids: string[]): boolean {
         if (!userJids.length) return false
-        // Drop expired timed bans lazily, then check. Permanent bans have expires_at NULL.
+
         sqlite.prepare('DELETE FROM gbans WHERE expires_at IS NOT NULL AND expires_at < ?').run(Date.now())
         const marks = userJids.map(() => '?').join(',')
         return Boolean(sqlite.prepare('SELECT 1 FROM gbans WHERE group_jid = ? AND user_jid IN (' + marks + ') LIMIT 1').get(chatJid, ...userJids))
@@ -1059,12 +1023,10 @@ export const db = {
         return statements.listCards.all(userJid) as CardRow[]
     },
 
-    /** Every owned card row across all users, for collection leaderboards. */
     allCards(): Array<{ user_jid: string; card_id: string; copies: number }> {
         return statements.allCardRows.all() as Array<{ user_jid: string; card_id: string; copies: number }>
     },
 
-    /** Game prize money earned on one day (epoch days), for the daily payout cap. */
     gameEarnedOn(userJid: string, day: number): number {
         const row = statements.rewardLedgerGet.get(userJid, day) as { total: number } | undefined
         return row?.total ?? 0
@@ -1081,8 +1043,6 @@ export const db = {
     topXpAll(limit = 10): Array<{ user_jid: string; xp: number }> {
         return statements.topXpAll.all(limit) as Array<{ user_jid: string; xp: number }>
     },
-
-    // ── Clans ────────────────────────────────────────────────────────────────
 
     clanCreate(name: string, tag: string, ownerJid: string): ClanRow {
         const existing = statements.clanByName.get(name) as ClanRow | undefined
@@ -1142,10 +1102,6 @@ export const db = {
         return statements.getCard.get(userJid, cardId) as CardRow | undefined
     },
 
-    /**
-     * Move exactly one copy of a card from one collection to another, atomically.
-     * Returns false when the sender does not own it.
-     */
     transferCardCopy(fromJid: string, toJid: string, cardId: string): boolean {
         const tx = sqlite.transaction((from: string, to: string, id: string): boolean => {
             const row = statements.getCard.get(from, id) as CardRow | undefined
@@ -1161,7 +1117,6 @@ export const db = {
         return tx(fromJid, toJid, cardId)
     },
 
-    /** Give one copy of a card from the sender's DECK to another user's DECK. */
     transferDeckCardCopy(fromJid: string, toJid: string, cardId: string): boolean {
         const tx = sqlite.transaction((from: string, to: string, id: string): boolean => {
             const row = statements.deckRow.get(from, id) as { copies: number } | undefined
@@ -1176,8 +1131,6 @@ export const db = {
         })
         return tx(fromJid, toJid, cardId)
     },
-
-    /** Give one copy of a card from the sender's DECK to another user's DECK. */
 
     topCollectors(limit = 10): Array<{ user_jid: string; total: number; unique_cards: number }> {
         return statements.topCollectors.all(limit) as Array<{
@@ -1196,7 +1149,6 @@ export const db = {
         statements.setTcgDaily.run(at, userJid)
     },
 
-    /** Raw settings read (used for mine game state and clan upkeep). */
     settingValue(key: string): string | undefined {
         const row = sqlite.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
         return row?.value
@@ -1207,14 +1159,12 @@ export const db = {
         return sqlite.prepare('SELECT balance, tax_pct FROM clan_treasury WHERE clan_id = ?').get(clanId) as { balance: number; tax_pct: number }
     },
 
-    /** Add war points to a clan for the week (quizzes, exams, events). */
     addClanWarPoints(clanId: number, points: number, weekKey: string): void {
         sqlite
             .prepare('INSERT INTO clan_war_points (week_key, clan_id, points) VALUES (?, ?, ?) ON CONFLICT (week_key, clan_id) DO UPDATE SET points = points + excluded.points')
             .run(weekKey, clanId, points)
     },
 
-    /** Record a trivia win and return the player's total. */
     recordQuizWin(userJid: string, name: string): number {
         sqlite
             .prepare('INSERT INTO quiz_scores (user_jid, name, wins, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT (user_jid) DO UPDATE SET wins = wins + 1, name = excluded.name, updated_at = excluded.updated_at')
@@ -1227,13 +1177,11 @@ export const db = {
         return sqlite.prepare('SELECT name, wins FROM quiz_scores ORDER BY wins DESC LIMIT ?').all(limit) as Array<{ name: string; wins: number }>
     },
 
-    /** Cumulative net casino profit banked by a clan's members, all time. */
     clanProfit(clanId: number): number {
         const row = sqlite.prepare('SELECT total FROM clan_profit WHERE clan_id = ?').get(clanId) as { total?: number } | undefined
         return row?.total ?? 0
     },
 
-    /** Sum of every member's wallet plus the treasury. */
     clanNetWorth(clanId: number): number {
         const row = sqlite
             .prepare('SELECT COALESCE(SUM(u.coins), 0) AS total FROM clan_members m JOIN users u ON u.jid = m.user_jid WHERE m.clan_id = ?')
@@ -1246,7 +1194,6 @@ export const db = {
         sqlite.prepare('UPDATE clan_treasury SET tax_pct = ? WHERE clan_id = ?').run(pct, clanId)
     },
 
-    /** Weekly upkeep in ryo. Owner-set with .clanupkeep, default 5000. */
     clanUpkeep(): number {
         const raw = this.settingValue('CLAN_UPKEEP')
         const value = raw === undefined ? NaN : Number.parseInt(raw, 10)
@@ -1257,25 +1204,16 @@ export const db = {
         this.setSetting('CLAN_UPKEEP', String(amount))
     },
 
-    /** Clan-war standings for one week: every clan, most points first. */
     clanWarStandings(weekKey: string): Array<{ id: number; name: string; points: number }> {
         return sqlite.prepare(
             'SELECT c.id AS id, c.name AS name, COALESCE(p.points, 0) AS points FROM clans c LEFT JOIN clan_war_points p ON p.clan_id = c.id AND p.week_key = ? ORDER BY points DESC, c.name ASC',
         ).all(weekKey) as Array<{ id: number; name: string; points: number }>
     },
 
-    /** Chats where the casino is open (.agb gamble). */
     casinoChats(): string[] {
         return (sqlite.prepare('SELECT chat_jid FROM casino_chats').all() as Array<{ chat_jid: string }>).map((row) => row.chat_jid)
     },
 
-    /**
-     * Atomic gamble settle. Debits `debit` (0 when the stake was already taken),
-     * credits `payout`, takes the clan cut on profit (profit = payout - roundStake),
-     * adds war points for new stakes, and optionally saves or clears a mine game
-     * key in the same transaction. Returns false and changes nothing when the wallet
-     * cannot cover the debit.
-     */
     settleGamble(
         userJid: string,
         debit: number,
@@ -1325,7 +1263,6 @@ export const db = {
         return tx()
     },
 
-    /** Atomic upkeep payment from the treasury. False (no change) when the treasury is short. */
     payClanUpkeep(clanId: number, amount: number): boolean {
         const tx = sqlite.transaction((): boolean => {
             const row = this.clanTreasury(clanId)
@@ -1336,10 +1273,6 @@ export const db = {
         return tx()
     },
 
-    /**
-     * A clan that failed upkeep is dissolved: each member goes to the largest clan
-     * that still has room (under maxMembers). Anyone with no room is removed from clans.
-     */
     reassignClan(clanId: number, maxMembers: number): { moved: number; unplaced: number; into: string[] } {
         const members = this.clanMembers(clanId)
         const into = new Set<string>()
@@ -1366,10 +1299,6 @@ export const db = {
         return { moved, unplaced, into: [...into] }
     },
 
-    /**
-     * Phone-number jids of everyone the bot has seen. WhatsApp only delivers a
-     * status to the recipients listed as its audience, so posting needs this.
-     */
     contactJids(limit = 1000): string[] {
         const rows = sqlite
             .prepare("SELECT jid FROM users WHERE jid LIKE '%@s.whatsapp.net' AND banned = 0 LIMIT ?")
@@ -1377,7 +1306,6 @@ export const db = {
         return rows.map((row) => row.jid)
     },
 
-    /** @lid contacts, resolved to phone jids when a status audience is built. */
     contactLids(limit = 200): string[] {
         const rows = sqlite
             .prepare("SELECT jid FROM users WHERE jid LIKE '%@lid' AND banned = 0 LIMIT ?")
@@ -1422,7 +1350,6 @@ export const db = {
         statements.setWorkAt.run(at, userJid)
     },
 
-    /** Atomic: only deducts when the balance covers it. Returns false otherwise. */
     spendCoins(userJid: string, amount: number): boolean {
         this.user(userJid)
         return statements.spendCoins.run(amount, userJid, amount).changes > 0
@@ -1432,13 +1359,11 @@ export const db = {
         return this.user(userJid).vault ?? 0
     },
 
-    /** Atomic wallet -> vault move. False when the wallet cannot cover it. */
     deposit(userJid: string, amount: number): boolean {
         this.user(userJid)
         return statements.deposit.run(amount, amount, userJid, amount).changes > 0
     },
 
-    /** Atomic vault -> wallet move. False when the vault cannot cover it. */
     withdraw(userJid: string, amount: number): boolean {
         this.user(userJid)
         return statements.withdraw.run(amount, amount, userJid, amount).changes > 0
@@ -1462,7 +1387,6 @@ export const db = {
         statements.upsertItem.run(userJid, item, qty)
     },
 
-    /** Atomic consume. Returns true only when the user had at least `qty` of the item. */
     takeItem(userJid: string, item: string, qty: number): boolean {
         return statements.decItem.run(qty, userJid, item, qty).changes > 0
     },
@@ -1479,10 +1403,6 @@ export const db = {
         return statements.selectBreakdown.all(userJid) as GameBreakdownRow[]
     },
 
-    /**
-     * One row per finished game. The global streak lives on `game_stats` so a
-     * win in any game extends it and a loss in any game resets it.
-     */
     recordGame(userJid: string, game: string, outcome: GameOutcome): GameStatRow {
         const current = this.gameStat(userJid) ?? {
             user_jid: userJid,
@@ -1557,7 +1477,6 @@ export const db = {
         return statements.allBreakdown.all() as GameBreakdownRow[]
     },
 
-    /** Restore a synced row without ever shrinking local progress. */
     mergeGameStat(row: GameStatRow): void {
         const current = this.gameStat(row.user_jid)
         const merged: GameStatRow = current
@@ -1594,11 +1513,6 @@ export const db = {
         )
     },
 
-    /**
-     * Add a legacy row onto another key. Used by the one-time LID -> phone
-     * migration: the two rows hold different games, so the counts add rather
-     * than take the larger side.
-     */
     absorbGameStat(row: GameStatRow): void {
         const current = this.gameStat(row.user_jid)
         if (!current) {
@@ -1768,7 +1682,6 @@ export const db = {
         sqlite.prepare('UPDATE pokedexcaught SET location = ? WHERE user_jid = ? AND poke_id = ?').run(location, jid, pokeId)
     },
 
-    /** Permanently removes a pokemon and its moves and deck slot. */
     pokeRelease(jid: string, pokeId: number): boolean {
         sqlite.prepare('DELETE FROM poke_moves WHERE user_jid = ? AND poke_id = ?').run(jid, pokeId)
         sqlite.prepare('DELETE FROM poke_pc WHERE user_jid = ? AND poke_id = ?').run(jid, pokeId)
@@ -1793,7 +1706,6 @@ export const db = {
         return byName
     },
 
-    /** When a 24h clan cooldown lifts (0 = no cooldown). */
     clanCooldownUntil(jid: string): number {
         return this.user(jid).clan_cd ?? 0
     },
@@ -1803,7 +1715,6 @@ export const db = {
         sqlite.prepare('UPDATE users SET clan_cd = ? WHERE jid = ?').run(until, jid)
     },
 
-    /** Has this player picked a starter and opened the pokemon game yet? */
     pokeStarted(jid: string): boolean {
         return Boolean(this.user(jid).poke_started)
     },
@@ -1825,7 +1736,6 @@ export const db = {
         sqlite.prepare('DELETE FROM poke_moves WHERE user_jid = ? AND poke_id = ? AND move = ?').run(jid, pokeId, move)
     },
 
-    /** Returns false when the move was already known. */
     pokeLearn(jid: string, pokeId: number, move: string): boolean {
         const info = sqlite
             .prepare('INSERT OR IGNORE INTO poke_moves (user_jid, poke_id, move, learned_at) VALUES (?, ?, ?, ?)')
@@ -1833,7 +1743,6 @@ export const db = {
         return info.changes > 0
     },
 
-    /** Add battle XP to one caught pokemon; returns the new xp and level. */
     pokeAddXp(jid: string, pokeId: number, amount: number): { xp: number; level: number } {
         sqlite
             .prepare('UPDATE pokedexcaught SET xp = xp + ? WHERE user_jid = ? AND poke_id = ?')
@@ -1849,17 +1758,16 @@ export const db = {
         return { xp, level }
     },
 
-    /** Swap the caught species in place when it evolves. */
     pokeEvolve(jid: string, fromId: number, to: { id: number; name: string; power: number }): boolean {
         const row = sqlite
             .prepare('SELECT * FROM pokedexcaught WHERE user_jid = ? AND poke_id = ?')
             .get(jid, fromId) as PokeCaughtRow | undefined
         if (!row) return false
         if (sqlite.prepare('SELECT 1 FROM pokedexcaught WHERE user_jid = ? AND poke_id = ?').get(jid, to.id)) {
-            // Already own the evolved form: bank the copy instead of duplicating the key.
+
             return false
         }
-        // Keep learned moves with the pokemon across its evolution.
+
         sqlite
             .prepare(
                 'INSERT OR IGNORE INTO poke_moves (user_jid, poke_id, move, learned_at) SELECT user_jid, ?, move, learned_at FROM poke_moves WHERE user_jid = ? AND poke_id = ?',

@@ -2,10 +2,6 @@ import { config } from '../config.ts'
 import { createLogger } from '../logger.js'
 import { releaseInstance } from './instance.js'
 
-// Process lifecycle: track in-flight WhatsApp sends so a restart or shutdown
-// waits for them, stop taking new messages, then exit 0 so pm2 brings the bot
-// back. Nothing here kills the process mid-reply.
-
 const log = createLogger(config.logLevel, { scope: 'lifecycle' })
 
 const pendingSends = new Set<Promise<unknown>>()
@@ -29,9 +25,6 @@ export function trackSend<T>(promise: Promise<T>): Promise<T> {
     return promise
 }
 
-// Bot-sent message id registry: the bot's own outgoing messages come back as
-// fromMe echoes; the owner typing on the bot's phone ALSO arrives as fromMe.
-// Only echoes of sends WE made can be skipped safely.
 const sentIds = new Map<string, number>()
 const SENT_TTL_MS = 10 * 60_000
 
@@ -84,18 +77,12 @@ async function runHooks(): Promise<void> {
     }
 }
 
-/**
- * Stop accepting messages, let in-flight sends finish (max 5s), run exit
- * hooks, release the instance lease and exit 0. pm2 restarts the process.
- * Safe to call from a signal handler or a command; only the first call acts.
- */
 export async function finishAndExit(reason: string): Promise<void> {
     if (exiting) return
     exiting = true
     accepting = false
     log.info('%s — draining in-flight sends before exit', reason)
 
-    // Hard ceiling so a stuck hook can never hold the process forever.
     setTimeout(() => process.exit(0), DRAIN_TIMEOUT_MS + HOOK_TIMEOUT_MS + 1_000).unref?.()
 
     await drainSends(DRAIN_TIMEOUT_MS)

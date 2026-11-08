@@ -48,16 +48,11 @@ const asLevel = (value: string | undefined): Level => {
     return levels.includes(candidate) ? candidate : 'info'
 }
 
-// Numbers set in the environment. These are the accounts a session is allowed
-// to belong to; keep them in sync when the bot moves to another number.
 const configuredOwners = phoneNumbers(process.env.OWNER_NUMBER)
 const sessionOwners = [
     ...new Set([...configuredOwners, ...phoneNumbers(process.env.SESSION_OWNER)]),
 ]
 
-// The permanent runtime account is compiled into the build (see `bot/seal.ts`)
-// and merged here, so no `.env`, setting or database row can remove it — the
-// owner never has to appear in config.env, which is the file users edit.
 const anchorNumber = configuredOwners[0] ?? permanentOwners[0] ?? ''
 const owners = [...new Set([...configuredOwners, ...permanentOwners])]
 const sudo = [...new Set([...phoneNumbers(process.env.SUDO), ...owners])]
@@ -87,7 +82,7 @@ export const login: LoginState = {
 
 const config = {
     sessionId: sessionId,
-    // Base URL of the pairing site; short SESSION_ID tokens resolve against it.
+
     pairServer: pairServer,
     sessionDir: resolve(text(process.env.SESSION_DIR, 'data/session')),
     dbPath: (() => {
@@ -118,48 +113,43 @@ const config = {
         alwaysOnline: flag(process.env.ALWAYS_ONLINE),
         typing: flag(process.env.TYPING),
         antiCall: flag(process.env.ANTI_CALL),
-        // antidelete message recovery (features/antidelete.ts)
+
         antidelete: flag(process.env.ANTIDELETE, true),
-        // group welcome/goodbye image cards (features/welcome.ts). When on, the
-        // plain-text welcome/goodbye messages are skipped so there is one greeting.
+
         welcomeCard: flag(process.env.WELCOME, false),
-        readCommands: flag(process.env.READ_MESSAGE, true),
+        readCommands: flag(process.env.READ_MESSAGE, false),
         startupMessage: flag(process.env.STARTUP_MESSAGE, true),
     },
 
     tcg: {
-        // One staggered card drop per hour in every group where the bot is an
-        // admin (features/card-scheduler.ts).
+
         hourlySpawns: flag(process.env.TCG_HOURLY_SPAWNS, true),
     },
 
     status: {
-        // milliseconds to wait before marking a status as viewed
+
         delayMs: Math.max(0, number(process.env.AUTO_STATUS_VIEW_DELAY, 0)),
-        // emoji to react with, or empty to skip
+
         react: text(process.env.AUTO_STATUS_REACT),
     },
 
     wordchain: {
-        // time players have to join a group lobby
+
         joinMs: Math.max(5, number(process.env.WCG_JOIN_SECONDS, 30)) * 1000,
-        // time each player has to send their word
+
         turnMs: Math.max(5, number(process.env.WCG_TURN_SECONDS, 30)) * 1000,
-        // group games need at least this many players
+
         minPlayers: Math.max(2, number(process.env.WCG_MIN_PLAYERS, 2)),
     },
 
     antiDelete: {
-        // off | same | bot | jid — `bot` sends recoveries to the bot's own
-        // number (self chat) instead of to the anchor/owner. `jid` forwards to
-        // ANTI_DELETE_JID. `same` resends in the chat the delete happened in.
+
         mode: ((): 'off' | 'same' | 'bot' | 'jid' => {
             const mode = text(process.env.ANTI_DELETE, 'off').toLowerCase()
             return mode === 'same' || mode === 'bot' || mode === 'jid' ? mode : 'off'
         })(),
         jid: digits(process.env.ANTI_DELETE_JID),
-        // Deleted statuses are forwarded to the bot's own number, never to the
-        // owner chat, so a status repost stays inside the account that saw it.
+
         status: text(process.env.ANTISTATUS_DELETE, 'off').toLowerCase() === 'on',
     },
 
@@ -177,9 +167,6 @@ const config = {
     ),
     goodbyeMessage: text(process.env.GOODBYE_MESSAGE, '*@user* left *@group*.'),
 
-    // When false, the whole games layer (cards + pokemon + casino) is hidden:
-    // commands refuse and the menus skip those categories. Deploy for
-    // "normal bot" users with GAMES_ENABLED=false.
     gamesEnabled: flag(process.env.GAMES_ENABLED, true),
 
     links: {
@@ -193,9 +180,6 @@ export { config, sessionId, pairServer }
 
 export type Config = typeof config
 
-
-// PREFIX=null runs the bot with no command prefix: messages are matched
-// against command names directly (`ping`, `menu`).
 function prefixNone(raw: string | undefined): string {
     const value = (raw ?? '.').trim()
     if (value.toLowerCase() === 'null') return ''

@@ -53,8 +53,6 @@ ari({
             return
         }
 
-        // Kept only so an old habit does not look broken. Forwarding to many
-        // sudo users leaked private chats, so it falls back to the same chat.
         if (action === 'sudo') {
             applySetting('ANTI_DELETE', 'same')
             await ctx.reply('Anti-delete is on ✅')

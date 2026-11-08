@@ -575,13 +575,12 @@ const keyOf = (chat: string): string => chat
 const BASE_MIN_LETTERS = 4
 const MAX_MIN_LETTERS = 8
 
-/** Words get one letter longer every few accepted turns, then cap out. */
 export function minimumLetters(game: WordChainGame): number {
     return Math.min(MAX_MIN_LETTERS, BASE_MIN_LETTERS + Math.floor(game.accepted / 3))
 }
 
 const neededPlayers = (game: WordChainGame): number =>
-    // A chain needs at least two humans everywhere, groups and DMs alike.
+
     game.group ? Math.max(2, config.wordchain.minPlayers) : 2
 
 const playerKey = (jid: string): string => phoneDigitsFor(jid) || jidToNumber(jid) || jid
@@ -600,8 +599,6 @@ function clearTimer(game: WordChainGame): void {
     }
 }
 
-// Joining-phase countdown: every 10s until the deadline, remind the group to
-// join ("60s / 50s / ... / 10s left"). Only fires while still in the lobby.
 function armJoinCountdown(game: WordChainGame): void {
     if (game.countdown) clearInterval(game.countdown)
     let nextMark = Math.floor((game.joinDeadline - Date.now()) / 10_000) * 10_000
@@ -799,8 +796,6 @@ export function startGame(
 
     games.set(keyOf(chat), game)
 
-    // Opening a lobby does not join the starter. Players must type `join`;
-    // in a direct chat that first join immediately begins the solo game.
     armTimer(game)
     if (game.group) armJoinCountdown(game)
 
@@ -932,8 +927,6 @@ async function isRealWord(word: string): Promise<boolean> {
     const cached = dictionaryCache.get(word)
     if (cached !== undefined) return cached
 
-    // When the free dictionary is down, do not make every turn wait for a
-    // timeout. Accept moderate alphabetic words until the API is retried.
     if (Date.now() < dictionaryDownUntil) return word.length >= 4
 
     try {
@@ -942,8 +935,6 @@ async function isRealWord(word: string): Promise<boolean> {
             { signal: AbortSignal.timeout(3500) },
         )
 
-        // Only a real 404 means "not a word". Cloudflare/rate-limit/5xx
-        // responses used to reject valid words such as "nuke" and "november".
         if (response.status === 404) {
             if (dictionaryCache.size >= DICTIONARY_CACHE_MAX) dictionaryCache.clear()
             dictionaryCache.set(word, false)

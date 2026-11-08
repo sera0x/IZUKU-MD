@@ -5,11 +5,6 @@ const clean = (value: string): string => value.trim().toLowerCase().replace(/^[.
 
 const AWAY = ['off', 'resume', 'enable', 'on', 'wake', 'unsuspend', 'back']
 
-/**
- * Owner switch for taking a command out of service while it is being fixed.
- * The pipeline already refuses suspended commands; this is the only way to put
- * one on and take it off again.
- */
 ari({
     name: 'maintenance',
     description: 'Take a command out of service for maintenance',

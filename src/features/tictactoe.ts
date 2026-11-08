@@ -1,9 +1,4 @@
-/**
- * Tic-tac-toe, brought back from the legacy bot without the mongoose/economy
- * baggage. One game per chat, kept in memory and swept after 15 idle minutes,
- * mirrored to the cloud store so a restart does not lose an in-flight match.
- * The board is drawn as an AMOLED-black PNG; names come from the caption.
- */
+
 
 import sharp from 'sharp'
 import { sameUser } from '../bot/identity.js'
@@ -15,11 +10,10 @@ export interface Game {
     board: Array<string | null>
     turn: string
     at: number
-    /** when the current turn started; a turn older than TURN_TIMEOUT is dead */
+
     turnAt: number
 }
 
-/** A turn dies after this long (legacy-style fast games). */
 export const TURN_TIMEOUT_MS = 60_000
 
 export interface BoardLabels {
@@ -42,7 +36,6 @@ export const WIN_LINES: number[][] = [
     [2, 4, 6],
 ]
 
-
 export function gameOf(chat: string): Game | null {
     const game = games.get(chat)
     if (!game) return null
@@ -53,12 +46,10 @@ export function gameOf(chat: string): Game | null {
     return game
 }
 
-/** True when the player on turn has overstayed their window. */
 export function turnExpired(game: Game): boolean {
     return Date.now() - game.turnAt > TURN_TIMEOUT_MS
 }
 
-/** A player only gets one live game at a time, whichever chat it is in. */
 export function gameInvolving(user: string): Game | null {
     for (const [chat, game] of games) {
         if (Date.now() - game.at > TTL) {
@@ -97,8 +88,6 @@ export function move(chat: string, user: string, position: number): MoveResult {
     const game = gameOf(chat)
     if (!game) return { ok: false, reason: 'No game is running. Start one with `ttt @user`.' }
 
-    // Stale turn: nobody moved in time, the game is dead. Say so plainly
-    // instead of leaving both players stuck.
     if (turnExpired(game)) {
         games.delete(chat)
         return { ok: false, reason: '\u23f1 Turn timed out (60s). Game over \u2014 start again with `ttt @user`.' }
@@ -142,11 +131,6 @@ export function move(chat: string, user: string, position: number): MoveResult {
     return { ok: true, game, player: user, mark }
 }
 
-/**
- * Monospace AMOLED-style board: a minimal frame, plain X and O marks, and a
- * subtle dot for empty squares. Sent inside a code block so WhatsApp renders
- * it in fixed-width type.
- */
 export function renderBoard(game: Game): string {
     const cell = (index: number): string => {
         const value = game.board[index]
@@ -166,13 +150,10 @@ export function renderBoard(game: Game): string {
     ].join('\n')
 }
 
-// ── Image board ───────────────────────────────────────────────────────────────────────────────
-
 const BOARD_SIZE = 1080
 const BOARD_MARGIN = 90
 const CELL = (BOARD_SIZE - BOARD_MARGIN * 2) / 3
 
-/** Cell center for a 0-8 slot index. */
 function cellCenter(index: number): { x: number; y: number } {
     return {
         x: BOARD_MARGIN + CELL * (index % 3) + CELL / 2,
@@ -180,11 +161,6 @@ function cellCenter(index: number): { x: number; y: number } {
     }
 }
 
-/**
- * Pure-black AMOLED board image: #000 canvas, dim grid, red X, blue O and
- * faint slot numbers on empty cells so players can see which number to send.
- * Falls back to the caller's text frame if rendering ever fails.
- */
 export async function renderBoardImage(game: Game): Promise<Buffer> {
     const parts: string[] = []
 
@@ -231,8 +207,6 @@ export async function renderBoardImage(game: Game): Promise<Buffer> {
     return sharp(Buffer.from(svg)).png().toBuffer()
 }
 
-// ── Cloud mirror ───────────────────────────────────────────────────────────────────────────────────
-
 export interface SerializedGame {
     chat: string
     players: [string, string]
@@ -262,7 +236,6 @@ export function snapshotGames(): SerializedGame[] {
     return rows
 }
 
-/** Restore synced games, skipping anything malformed or already expired. */
 export function restoreGames(rows: unknown): number {
     if (!Array.isArray(rows)) return 0
 
@@ -295,16 +268,8 @@ export function restoreGames(rows: unknown): number {
     return restored
 }
 
-// ── Prefix-free input ─────────────────────────────────────────────────────────
-
 const TTT_WORDS = new Set(['ttt', 'tictactoe', 'tic'])
 
-/**
- * Tic-tac-toe does not need the command prefix: `ttt @user`, `ttt 5`,
- * `ttt end`, and a bare `5` while a game is live all work. Returns the
- * arguments to run the `.ttt` command with, or null when the text is not a
- * move at all.
- */
 export function bareTttCommand(chat: string, body: string): { args: string } | null {
     const trimmed = body.trim()
     if (!trimmed) return null
@@ -313,14 +278,11 @@ export function bareTttCommand(chat: string, body: string): { args: string } | n
     const word = (first ?? '').toLowerCase().replace(/[.!?]+$/, '')
     if (TTT_WORDS.has(word)) return { args: rest.join(' ') }
 
-    // A lone digit is only a move when the chat already has a game, so the
-    // bot never treats ordinary counting chatter as a command.
     if (gameOf(chat) && /^[1-9]$/.test(trimmed)) return { args: trimmed }
 
     return null
 }
 
-/** Test seam so a suite can reset the shared state. */
 export function clearGames(): void {
     games.clear()
 }

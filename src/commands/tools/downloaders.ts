@@ -8,8 +8,6 @@ import { twitterDl } from '../../features/scrapers/twitter.js'
 import { pinterestDl, pinterestSearch } from '../../features/scrapers/pinterest.js'
 import { imgurDl } from '../../features/scrapers/imgur.js'
 
-// Downloaders ported from the asamake reference bot (itsdevmj/asamake).
-
 const MAX_BYTES = 64 * 1024 * 1024
 
 interface Scraped {
@@ -84,8 +82,6 @@ makeDownloader('instagram', ['instagram.com'], instagramDl, ['igdl', 'ig'])
 makeDownloader('twitter', ['twitter.com', 'x.com'], twitterDl, ['twdl', 'tw', 'xdl'])
 makeDownloader('imgur', ['imgur.com', 'imgur.io'], imgurDl, ['im'])
 
-// `.pindl` takes a link or a search. A link is downloaded; anything else is
-// looked up on Pinterest, and the best hit is sent with the rest as links.
 ari({
     name: 'pinterest',
     description: 'Download a Pinterest pin, or search Pinterest when given words',

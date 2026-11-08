@@ -17,7 +17,6 @@ const NEED_MEDIA = 'Reply to an image, video or sticker. 🛑'
 
 const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 
-/** Refuse obvious local targets so the command cannot be pointed at the host. */
 const blockedHost = (hostname: string): boolean => {
     const host = hostname.toLowerCase()
     return (
@@ -247,7 +246,6 @@ interface TikwmData {
     author?: { unique_id?: string; nickname?: string }
 }
 
-/** tikwm returns relative media paths (".../file.mp4") as well as absolute ones. */
 const absoluteMedia = (path: string | undefined): string | undefined => {
     if (!path) return undefined
     if (/^https?:\/\//i.test(path)) return path
@@ -314,7 +312,6 @@ ari({
         const title = (data.title ?? '').trim().slice(0, 200)
         const caption = ['*TikTok*', title ? `_${title}_` : '', `👤 ${author}`].filter(Boolean).join('\n')
 
-        // Photo slideshows come back as an image list, not a video.
         const slides = (data.images ?? []).map(absoluteMedia).filter((src): src is string => Boolean(src))
         if (slides.length) {
             const shown = slides.slice(0, 5)

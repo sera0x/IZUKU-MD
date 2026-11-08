@@ -34,7 +34,7 @@ export function runtimeLabel(): string {
 
 export function dateLines(now = new Date()): { time: string; day: string; date: string } {
     return {
-        // Keep the menu header compact so it does not wrap on a phone.
+
         time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(now),
         day: new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(now),
         date: new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(now),

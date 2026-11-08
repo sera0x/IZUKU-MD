@@ -28,7 +28,6 @@ ari({
 
         const argument = (ctx.args[0] ?? '').trim().toLowerCase()
 
-        /** The sender's own pushname, otherwise the stored contact name. */
         const nameOf = async (jid: string): Promise<string> => {
             if (sameUser(jid, ctx.sender)) return ctx.senderName
             const stored = await targetName(ctx, jid).catch(() => '')
@@ -43,8 +42,7 @@ ari({
         const vs = (_g: Game, n: { x: string; o: string }): string => `${n.x} ❌ vs ⭕ ${n.o}`
 
         const sendBoard = async (game: Game, caption: string, mentions: string[] = []): Promise<void> => {
-            // AMOLED-black board image; fall back to the text frame if the
-            // renderer ever fails so a game never gets stuck mid-move.
+
             const image = await renderBoardImage(game).catch(() => null)
             if (image) {
                 await ctx.sock.sendMessage(ctx.chat, { image, caption, mentions }, { quoted: ctx.msg })
@@ -52,7 +50,7 @@ ari({
                 const text = ['```', renderBoard(game), '```', caption].join('\n')
                 await ctx.sock.sendMessage(ctx.chat, { text, mentions }, { quoted: ctx.msg })
             }
-            // Mirror the move so a restart does not lose the match.
+
             syncSoon()
         }
 
@@ -145,7 +143,6 @@ ari({
             return
         }
 
-        // Only one match per chat, and a player cannot be in two at once.
         const mine = gameInvolving(ctx.sender)
         if (mine) {
             await ctx.reply(`You already have a game running in another chat (*${mine.chat.split('@')[0]}*). 🛑`)

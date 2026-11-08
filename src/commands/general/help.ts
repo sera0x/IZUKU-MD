@@ -9,8 +9,6 @@ import type { Category, Command } from '../../bot/types.js'
 
 const ORDER: Category[] = ['general', 'group', 'tools', 'media', 'fun', 'games', 'afk', 'owner']
 
-// Pokemon commands, listed next to the arena pair so the games section is not
-// empty until someone opens it with .agb poke in that group.
 const POKEMON_NAMES = [
     'pspawn',
     'catch',
@@ -29,20 +27,14 @@ const POKEMON_NAMES = [
     'quest',
 ]
 
-// The arena pair is always on: it needs no group activation and works in DMs.
 const ALWAYS_ON_GAMES = new Set(['ttt', 'tictactoe', 'wcg', 'wordchain', ...POKEMON_NAMES])
 
-// Some legacy theme URLs are dead or reject hotlinking. Skip a failed image
-// for a while and try the theme's next picture instead of falling back to text.
 const imageFailures = new Map<string, number>()
 const IMAGE_RETRY_MS = 15 * 60 * 1000
 
-// Two lightweight renderers rotate twice a day. This is only a couple of
-// string templates, so it adds no storage or background work.
 const MENU_LAYOUT_MS = 12 * 60 * 60 * 1000
 const menuLayout = (): 0 | 1 => (Math.floor(Date.now() / MENU_LAYOUT_MS) % 2) as 0 | 1
 
-// One command per line keeps every name readable on a phone screen.
 const commandLines = (commands: Command[], prefix: string): string[] =>
     commands.map((command) => `│ ▸ *${prefix}${command.name}*`)
 
@@ -89,9 +81,6 @@ ari({
         const [query] = ctx.args
         const layout = menuLayout()
 
-        // Collection games are opt-in per group (.agb live). Until a mod opens
-        // them, the card and pokemon commands stay out of the menu entirely and
-        // only the plain bot is advertised.
         const gamesOn = ctx.isGroup && db.gameActive(ctx.chat)
         const casinoOn = ctx.isGroup && db.casinoEnabled(ctx.chat)
         const CASINO_NAMES = new Set(['slot', 'mine', 'mpick', 'cashout'])
@@ -105,9 +94,6 @@ ari({
                 (name) => name.toLowerCase() === query.toLowerCase(),
             )
 
-            // A category name wins over a command alias: ".help games" used to
-            // resolve to the .streak alias and print one card instead of the
-            // whole games list.
             const command = category ? undefined : findCommand(query)
             if (command) {
                 await ctx.reply(details(command))
@@ -128,7 +114,6 @@ ari({
                 return
             }
 
-            // Eclipse-style paging: ".help fun 2" shows the second page.
             const PAGE = 20
             const pages = Math.max(1, Math.ceil(all.length / PAGE))
             const page = Math.min(Math.max(1, Number(ctx.args[1]) || 1), pages)
@@ -143,9 +128,6 @@ ari({
             return
         }
 
-        // Eclipse-style worlds menu: only in groups where the anchor
-        // activated the game (.agb live). Otherwise: the normal menu.
-        // Worlds menu only in groups where the anchor ran .agb live.
         const gameMenu = gamesOn
         const WORLDS: Array<{ title: string; icon: string; categories: Category[] }> = [
             { title: 'Card Hall', icon: '▫', categories: (config.gamesEnabled ? (['games'] as Category[]) : []).filter((c) => commandsByCategory().has(c)) },
@@ -159,8 +141,6 @@ ari({
         let visibleCount = 0
         const seen = new Set<Category>()
 
-        // Activated sections only, every command name listed in full.
-        // cards: .agb live, pokemon: .agb poke, casino: .agb gamble.
         if (ctx.isGroup && !query) {
             const cardsOn = db.gameActive(ctx.chat)
             const pokeOn = db.pokeEnabled(ctx.chat)
@@ -198,7 +178,6 @@ ari({
             sections.push('')
         }
 
-        // Categories not covered by the worlds overview still appear in full.
         for (const [category, commands] of [...commandsByCategory()].sort(
             ([a], [b]) => ORDER.indexOf(a) - ORDER.indexOf(b),
         )) {

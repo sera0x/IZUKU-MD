@@ -33,7 +33,6 @@ interface SttResult {
     secs: number
 }
 
-/** Split text at sentence ends into chunks the free TTS endpoint accepts. */
 function splitForTts(text: string, max: number): string[] {
     const sentences = text.match(/[^.!?\n]+[.!?]*\s*|[.!?\n]+/g) ?? [text]
     const chunks: string[] = []

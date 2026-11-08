@@ -47,8 +47,7 @@ const setters: Record<string, (value: string) => string> = {
             .map((entry) => digits(entry))
             .filter((entry) => entry.length >= 7)
         if (!numbers.length) throw new Error('owner number needs at least 7 digits')
-        // The compiled-in anchor always stays an owner, otherwise a typo here
-        // would lock the real owner out of their own bot.
+
         config.owners = [
             ...new Set([...numbers, ...(config.anchorNumber ? [config.anchorNumber] : [])]),
         ]
@@ -90,9 +89,7 @@ const setters: Record<string, (value: string) => string> = {
     },
     ANTI_DELETE: (value) => {
         const requested = value.trim().toLowerCase()
-        // `sudo` used to forward recovered messages to every sudo user. That
-        // leaked private chats, so it now behaves like `same`. `bot` sends
-        // recoveries to the bot's own number instead of to the anchor.
+
         const mode: 'off' | 'same' | 'bot' | 'jid' =
             requested === 'sudo' ? 'same' : (requested as 'off' | 'same' | 'bot' | 'jid')
         if (!['off', 'same', 'bot', 'jid'].includes(mode)) {

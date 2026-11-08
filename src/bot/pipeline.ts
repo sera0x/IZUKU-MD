@@ -70,14 +70,11 @@ async function resolveSenderJid(sock: WASocket, msg: WAMessage, chat: string, is
         : key.remoteJidAlt ?? key.participantAlt
     if (pnFromKey) return pnFromKey
 
-
     const raw = msg.key.participant ?? chat
     if (raw && raw.endsWith('@lid')) {
         const mapped = await sock.signalRepository?.lidMapping?.getPNForLID(raw).catch(() => null)
         if (mapped) return mapped
-        // Fall back to the local lid->phone map so a user's cards, coins and
-        // deck stay under ONE account row no matter which jid form WhatsApp
-        // hands us for a given message.
+
         const local = await phoneJidFor(sock, raw).catch(() => '')
         if (local) return local
     }
@@ -98,10 +95,6 @@ const onCooldown = (key: string, ms: number): boolean => {
     return false
 }
 
-/**
- * Per-chat settings win over the global AUTO_REACTION flag. An explicit
- * `.react off` must be able to silence a globally enabled reaction.
- */
 function autoReactionFor(chat: string): string {
     const settings = db.autoreact(chat)
     if (settings.configured) return settings.enabled ? settings.emoji : ''
@@ -118,9 +111,6 @@ function shouldSkip(msg: WAMessage): boolean {
     return ['protocolMessage', 'reactionMessage', 'pollUpdateMessage', 'senderKeyDistributionMessage'].includes(type)
 }
 
-// Unix seconds at process boot. WhatsApp replays queued events after every
-// reconnect or restart; anything stamped before boot is history, not a live
-// command, so it must never run (commands) or be restored (revokes).
 const BOOT_CUTOFF_S = Math.floor(runtime.startedAt / 1000)
 
 function isBeforeBoot(msg: WAMessage): boolean {
@@ -132,8 +122,6 @@ function isBeforeBoot(msg: WAMessage): boolean {
     return ts < BOOT_CUTOFF_S
 }
 
-// Message ids already acted on in this process, so a replayed upsert of the
-// same message never runs twice.
 const seenIds = new Set<string>()
 function firstSighting(msg: WAMessage): boolean {
     const id = msg.key.id
@@ -148,36 +136,24 @@ function firstSighting(msg: WAMessage): boolean {
 }
 
 export function attachMessageHandler(sock: WASocket): void {
-    // Same shape as asamake: revokes are handled at the upsert level before any
-    // `type` filter, because WhatsApp can deliver a live revoke as a non-notify
-    // upsert. Commands still run only for live `notify` messages.
+
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         for (const msg of messages) {
             try {
                 if (isBeforeBoot(msg)) {
-                    // Do not run it, but do cache it: a message sent just before a
-                    // restart used to be invisible to anti-delete, so deleting it
-                    // right after boot produced a notice with nothing under it.
+
                     rememberMessage(msg, msg.key.participant ?? msg.key.remoteJid ?? '', { onlyIfMissing: true })
                     log.debug('skipping message stamped before boot (%s)', msg.key.id)
                     continue
                 }
                 if (!firstSighting(msg)) continue
-                // Persistent de-dupe: a replayed command from before a restart
-                // must never execute again (kills the restart-loop).
+
                 if (!msg.key.id || !firstProcessedSighting(msg.key.id)) continue
 
-                // Revokes are recovered here, before the notify gate. Any other
-                // protocol message falls through to the normal path unchanged.
                 if (config.features.antidelete && (await handleAntiDelete(sock, msg))) continue
 
-                // Skip only echoes of messages the BOT itself sent (tracked in
-                // lifecycle.ts). The owner typing on the bot's phone is also
-                // fromMe, and those are the owner's commands: they must run.
                 if (msg.key.fromMe === true && isBotSentId(msg.key.id)) continue
 
-                // `append` is the history sync WhatsApp sends after a reconnect.
-                // Acting on it made a restarted bot answer old messages.
                 if (type !== 'notify') continue
 
                 await processMessage(sock, msg)
@@ -188,11 +164,6 @@ export function attachMessageHandler(sock: WASocket): void {
     })
 }
 
-/**
- * The sender's display name for this message. `pushName` is absent on messages
- * the bot sent itself and on history-sync rows, which made profiles fall back to
- * the raw phone number; the linked account's own profile name covers that case.
- */
 function pushNameOf(sock: WASocket, msg: WAMessage): string {
     const fromMessage = (msg.pushName ?? '').trim()
     if (fromMessage) return fromMessage
@@ -204,14 +175,10 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     const remoteJid = msg.key.remoteJid
     if (!remoteJid || !msg.message) return
 
-    // Message log (fire-and-forget), placed before every early return below so
-    // group and private messages are logged regardless of the path they take.
-    // Bot-sent echoes and protocol/reaction rows are excluded.
     if (config.features.antidelete && (await handleAntiDelete(sock, msg))) return
 
     if (remoteJid === 'status@broadcast') {
-        // Outgoing rows in this chat are the bot's own reaction echoes. Viewing or
-        // reacting to them again would loop forever.
+
         if (msg.key.fromMe === true || msg.message.reactionMessage) return
 
         const key = msg.key as { participantAlt?: string; remoteJidAlt?: string }
@@ -239,9 +206,7 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
 
     const chat = remoteJid
     const isGroup = chat.endsWith('@g.us')
-    // A message the bot sent itself (owner typing on the bot's device) belongs
-    // to the bot account, not to the chat partner. Without this, owner
-    // commands would write per-user state (theme, notes) onto the peer.
+
     const sender = msg.key.fromMe === true
         ? jidNormalizedUser(sock.user?.id ?? '') || chat
         : await resolveSenderJid(sock, msg, chat, isGroup)
@@ -260,20 +225,14 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     const isOwner = fromMe || config.owners.includes(senderNumber)
     const isSudo = isOwner || config.sudo.includes(senderNumber)
     const body = extractText(msg.message)
-    // PREFIX=null: every message is checked against command names directly.
+
     const isCommand =
         config.prefix.length > 0
             ? body.startsWith(config.prefix)
             : findCommand(body.trim().split(/\s+/)[0] ?? '') !== undefined
 
-
-    // Tic-tac-toe is played without a prefix: `ttt 5`, `ttt end` and a bare
-    // digit during a live match all reach the command as if `.ttt` was typed.
     const bareGame = isCommand ? null : bareTttCommand(chat, body)
 
-    // Owner-created sticker shortcuts. A sticker bound with `.setcmd save`
-    // runs that command as if the owner had typed it, while still carrying the
-    // sticker message so reply-based commands can see the quoted media.
     const stickerTrigger = !isCommand && !bareGame && isOwner ? stickerCommand(msg) : ''
     const commandMode = isCommand || stickerTrigger.length > 0 || bareGame !== null
     const commandBody = stickerTrigger
@@ -319,9 +278,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     const args = text.length ? text.split(/\s+/) : []
     const command = commandMode ? findCommand(commandName) : undefined
 
-    // A group can hold several deployments of the bot. `.sleep <name>` chooses
-    // the one that answers; the others stay silent but still keep their message
-    // cache warm and still honour `.sleep` itself.
     if (isGroup && !(commandName === 'sleep' && isOwner) && !answersHere(sock, chat)) return
     if (command && !config.gamesEnabled && command.category === 'games') {
         await sendText(sock, chat, msg, '🎮 the games layer is off on this deploy. 🛑')
@@ -332,10 +288,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
         return
     }
 
-    // Links and blocked words are policed on ordinary chat messages too, not
-    // only on commands: a command may legitimately carry a link (`.dl`, `.wiki`),
-    // a normal message never should.
-    // Groups without an active .agb live get no guard replies or enforcement.
     if (isGroup && !commandMode) {
         const metadata = await groupMetadata(sock, chat)
         const senderIsAdmin = isGroupAdmin(metadata, sender)
@@ -359,7 +311,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
         if (await enforceAntilink({ ...guard, groupName: metadata?.subject ?? 'this group' })) return
         if (await enforceBadWords(guard)) return
 
-        // Auto-sticker: opt-in per group, and never for commands or stickers.
         const content = unwrapMessage(msg.message)
         if (db.group(chat).autosticker && content?.imageMessage) {
             try {
@@ -373,8 +324,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
         }
     }
 
-    // Commands get the progress/finish reaction flow below. Passive messages
-    // and unknown commands keep the lightweight per-chat auto reaction.
     if (!command) {
         const autoReaction = autoReactionFor(chat)
         if (autoReaction) {
@@ -424,9 +373,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
     if (!command) return
     if (stickerTrigger) log.info('sticker trigger %s from %s in %s', command.name, senderNumber, isGroup ? chat : 'dm')
 
-    // A sticker bound with `.setcmd` is a shortcut, not a conversation: the
-    // command runs and the bot says nothing of its own. Guard messages (usage,
-    // admin, cooldown) collapse into one ❌ reaction instead of a text reply.
     const refuse = (text: string): Promise<unknown> =>
         stickerTrigger
             ? sock.sendMessage(chat, { react: { text: '❌', key: msg.key } }).catch(() => undefined)
@@ -499,10 +445,6 @@ export async function processMessage(sock: WASocket, msg: WAMessage): Promise<vo
 
     log.info('cmd %s from %s in %s', command.name, senderNumber, isGroup ? chat : 'dm')
 
-    // WhatsApp reactions are replaced by sending a new reaction with the same
-    // message key, so this is a lightweight progress indicator with no extra
-    // message spam. The final ✅/🛑 replaces the ⏳ reaction, then an empty
-    // reaction clears it so command messages do not keep a stale status icon.
     const setCommandReaction = (emoji: string): Promise<unknown> =>
         sock.sendMessage(chat, { react: { text: emoji, key: msg.key } }).catch(() => undefined)
 
@@ -531,11 +473,9 @@ async function handlePassive(
     sender: string,
     body: string,
 ): Promise<void> {
-    // Activity tracking is passive: one upsert per chat message, no reply.
+
     awardMessageXp(chat, sender)
 
-    // AFK notices and keyword filter replies are bot auto-sends: groups without
-    // an active .agb live get none of them.
     const live = true
     const say = (content: string): Promise<unknown> => (live ? sendText(sock, chat, msg, content) : Promise.resolve())
 
@@ -554,11 +494,6 @@ async function handlePassive(
 
 }
 
-/**
- * `@2348012345678` only renders as a person's name when the same JID is in
- * `mentions`; without it WhatsApp shows the bare number. Collect them here so
- * every command gets pushnames for free instead of each one remembering.
- */
 const MENTION_PATTERN = /@(\d{7,15})/g
 
 export function mentionsIn(content: string): string[] {
@@ -566,8 +501,7 @@ export function mentionsIn(content: string): string[] {
     for (const match of content.matchAll(MENTION_PATTERN)) {
         const number = match[1]
         if (!number) continue
-        // Groups run on @lid: prefer the lid form so the tag actually pings
-        // the person. Fall back to the phone jid when no lid is known.
+
         const lid = lidJidFor(`${number}@s.whatsapp.net`)
         found.add(lid || `${number}@s.whatsapp.net`)
     }
@@ -581,8 +515,7 @@ async function sendText(
     content: string,
     explicit: string[] = [],
 ): Promise<unknown> {
-    // Explicit jids (the exact accounts named in the text) win; auto-detected
-    // digits only add a jid for numbers the caller did not already cover.
+
     const covered = new Set(explicit.map((jid) => jid.split('@')[0]?.split(':')[0] ?? ''))
     const auto = mentionsIn(content).filter((jid) => !covered.has(jid.split('@')[0] ?? ''))
     const mentions = [...new Set([...explicit, ...auto])]

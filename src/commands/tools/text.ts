@@ -82,8 +82,7 @@ ari({
             await ctx.reply(`Usage: ${ctx.prefix}reverse hello there`)
             return
         }
-        // Array.from keeps emoji and accented characters intact instead of
-        // ripping their surrogate pairs apart.
+
         await ctx.reply(Array.from(ctx.text).reverse().join(''))
     },
 })

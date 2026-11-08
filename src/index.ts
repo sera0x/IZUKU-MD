@@ -36,10 +36,6 @@ async function chooseLogin(): Promise<void> {
         return
     }
 
-    // Pairing codes come from the pairing website only. Typing the number into
-    // the terminal here is what produced code after code (and WhatsApp rate
-    // limiting the number), so the terminal just asks for a SESSION_ID instead.
-    // `PAIRING_NUMBER` in an old config is ignored: the login falls back to QR.
     login.mode = 'qr'
 
     log.warn('No WhatsApp session found.')
@@ -58,28 +54,20 @@ async function main(): Promise<void> {
         return
     }
 
-    // Refuse to run a second copy of this deployment (stop before it can fight
-    // over the WhatsApp session).
     await claimInstance()
 
     loadSettings()
 
-    // Load the LID/phone pairs before restoring so scoreboard rows from the
-    // cloud can be written under the canonical phone-number key.
     loadLidMappings()
 
-    // Pull the mirrored games and scoreboard first: a rebuild on a fresh VPS
-    // should resume matches and keep everyone's streak.
     await restoreCloudState().catch((error: Error) =>
         log.warn('cloud restore failed: %s', error.message),
     )
 
-    // Fold any legacy LID-keyed rows into their phone-number rows. This is a
     log.info('%s %s starting (%s mode, prefix "%s")', config.botName, config.version, config.mode, config.prefix)
 
     await chooseLogin()
     if (process.exitCode) return
-
 
     if (!config.sessionId) await clearUnfinishedPairing()
 
@@ -93,7 +81,6 @@ async function main(): Promise<void> {
         process.exitCode = 1
         return
     }
-
 
     let startupAnnounced = false
 
@@ -131,7 +118,6 @@ async function main(): Promise<void> {
                 .sendMessage(owner, { text })
                 .catch((error: Error) => log.debug('startup message failed: %s', error.message))
 
-            // Tell the owner once per commit when GitHub is ahead.
             void import('./bot/update-checker.js')
                 .then((checker) => checker.announceUpdate(sock))
                 .catch((error: Error) => log.debug('update check failed: %s', error.message))
@@ -147,8 +133,6 @@ async function main(): Promise<void> {
 
     const bot = new Bot(botEvents)
 
-    // Close the WhatsApp socket on shutdown so a restart does not leave a
-    // half-open connection that WhatsApp reports as a session conflict.
     const shutdown = (signal: string): void => {
         void flushCloudState().catch(() => undefined)
         registerExitHook(() => bot.stop())
@@ -157,7 +141,6 @@ async function main(): Promise<void> {
     process.once('SIGINT', () => shutdown('SIGINT'))
     process.once('SIGTERM', () => shutdown('SIGTERM'))
 
-    // One bad listener or network call must not take the bot down.
     process.on('unhandledRejection', (reason) => {
         const detail = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)
         log.error('unhandled rejection: %s', detail)

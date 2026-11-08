@@ -1,10 +1,5 @@
 import { db } from '../db/index.js'
 
-/**
- * Level curve: level 1 starts at 0 xp, level 2 at 10, level 3 at 40, level 4 at
- * 90 ... i.e. `(level - 1)^2 * 10`. Cheap to compute in both directions and
- * grows fast enough that the leaderboard stays meaningful.
- */
 export const xpForLevel = (level: number): number => Math.max(0, level - 1) ** 2 * 10
 
 export const levelForXp = (xp: number): number => Math.floor(Math.sqrt(Math.max(0, xp) / 10)) + 1
@@ -28,7 +23,6 @@ export function progressFor(xp: number): Progress {
     }
 }
 
-/** Flat 5 xp per message: predictable, and one upsert per message. */
 export const XP_PER_MESSAGE = 5
 
 export function awardMessageXp(chat: string, user: string): Progress {
@@ -48,11 +42,6 @@ export const rankLine = (chat: string, user: string): string => {
 
 export const tidyName = (name: string): string => name.replace(/\s+/g, ' ').trim().slice(0, 24)
 
-/**
- * Progressive hero rank. A tier needs both activity (level) and games played
- * and won, so chatting alone cannot max it out and win-farming alone cannot
- * either. Tiers are ascending; the last one a player qualifies for wins.
- */
 export interface HeroTier {
     name: string
     badge: string
@@ -73,7 +62,7 @@ export const HERO_TIERS: HeroTier[] = [
 export interface TierProgress {
     current: HeroTier
     next?: HeroTier
-    /** 0-100 progress inside the current tier. */
+
     percent: number
 }
 

@@ -17,10 +17,6 @@ interface StatusKey {
     id?: string
 }
 
-/**
- * WhatsApp uses several fields for the author of a status depending on the
- * client and Baileys version. Return the first usable hint.
- */
 export function statusParticipant(msg: WAMessage): string | undefined {
     const key = msg.key as StatusKey
     const extra = msg as unknown as { participant?: string }
@@ -30,7 +26,6 @@ export function statusParticipant(msg: WAMessage): string | undefined {
     )
 }
 
-/** Seed the LID map from every identity hint on the status message. */
 function rememberStatusIdentity(msg: WAMessage): void {
     const key = msg.key as StatusKey
     const extra = msg as unknown as { participant?: string }
@@ -43,15 +38,6 @@ function rememberStatusIdentity(msg: WAMessage): void {
     if (lid && pn) rememberIdentityPair(lid, pn)
 }
 
-/**
- * Mark a single status as viewed and, when configured, react to it.
- *
- * Status receipts need a phone-number participant JID — Baileys sends the
- * status author as an `@lid` in v7, which is why a plain
- * `readMessages([msg.key])` often reports success but never turns the ring
- * green. Resolve the LID first, then fall back to the raw participant so we
- * still try on accounts where no mapping is available yet.
- */
 export async function viewStatus(sock: WASocket, msg: WAMessage): Promise<void> {
     if (!runtime.autoReadStatus) return
     if (msg.key.fromMe === true) return
@@ -69,11 +55,6 @@ export async function viewStatus(sock: WASocket, msg: WAMessage): Promise<void> 
     const resolved = await phoneJidFor(sock, participant)
     const senderJid = resolved || jidNormalizedUser(participant) || participant
 
-    // `readMessages` downgrades to a `read-self` receipt when chat read
-    // receipts are private, which never turns the author's ring green. A
-    // status view is its own receipt, so send it explicitly as `read`. Some
-    // accounts address the status author by LID and others by phone JID, so
-    // try both forms rather than trusting a single mapping.
     const receiptTargets = [...new Set([senderJid, jidNormalizedUser(participant) || participant].filter(Boolean))]
     let delivered = false
 
@@ -119,11 +100,6 @@ export async function viewStatus(sock: WASocket, msg: WAMessage): Promise<void> 
     }
 }
 
-/**
- * Schedule the status read receipt. With no delay the work is awaited so
- * callers/tests are deterministic; with a delay it runs in the background
- * and re-checks the toggle, in case it was turned off in the meantime.
- */
 export async function handleStatusView(sock: WASocket, msg: WAMessage): Promise<void> {
     if (!runtime.autoReadStatus) return
     if (msg.key.fromMe === true) return

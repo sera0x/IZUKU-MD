@@ -40,11 +40,9 @@ ari({
     groupOnly: true,
     cooldownMs: 0,
     run: async (ctx) => {
-        // Moves are written with spaces (`pawn e4`, `knight b1 d2`), so the whole
-        // tail of the message is the argument, not just the first word.
+
         const argument = ctx.args.join(' ').trim().toLowerCase()
 
-        /** Push name, stored contact name, then phone number. */
         const nameOf = async (jid: string): Promise<string> => {
             if (sameUser(jid, ctx.sender)) return ctx.senderName
             const stored = await targetName(ctx, jid).catch(() => '')
@@ -56,11 +54,6 @@ ari({
             return 'that user'
         }
 
-        /**
-         * `@<digits>` tag for a player. WhatsApp only turns the text into a real
-         * tag when the digits match an entry in `mentions`, so the label is the
-         * jid's own user part and the client renders the saved contact name.
-         */
         const tagOf = (jid: string): string => {
             const digits = jid.split('@')[0]?.split(':')[0] ?? ''
             return /^\d+$/.test(digits) ? `@${digits}` : 'that player'
@@ -69,15 +62,8 @@ ari({
         const playersLine = (game: ChessGame): string =>
             `♔ ${tagOf(game.players[0])} (white) vs ${tagOf(game.players[1])} (black) ♚`
 
-        /** Mention jids stay in whatever form the chat uses (LID or PN). */
         const mentionJids = (game: ChessGame): string[] => game.players.filter(Boolean)
 
-        /**
-         * Board message. Media messages must not carry a context-info card:
-         * WhatsApp silently drops an image that also holds an externalAdReply,
-         * which is why the board stopped arriving. The picture alone is the
-         * board, so the card is not needed here.
-         */
         const sendBoard = async (game: ChessGame, caption: string): Promise<void> => {
             const mentions = mentionJids(game)
             const image = await renderBoardImage(game).catch(() => null)
@@ -112,8 +98,6 @@ ari({
             return
         }
 
-        // Anything that is not a keyword or a tag is treated as a move attempt,
-        // so a typo gets "not a legal move" instead of a silent board redraw.
         if (sitting && argument && !argument.startsWith('@')) {
             const result = playMove(ctx.chat, ctx.sender, argument)
             if (!result.ok) {
@@ -122,8 +106,7 @@ ari({
             }
 
             const game = result.game
-            // After applying a move the turn belongs to the opponent, so the
-            // mover is the other player.
+
             const moverTag = tagOf(game.turn === 'w' ? game.players[1] : game.players[0])
             const lines = playersLine(game)
 

@@ -1,12 +1,5 @@
 import { consoleLevel, createLogger, toBaileysLogger, type BaileysLogger } from '../logger.js'
 
-/**
- * Baileys logs a warning every time a message cannot be decrypted with the
- * stored session (an already-consumed prekey, a rotted counter, Bad MAC). It
- * then drops that session so the next message renegotiates, which makes the
- * line recovery chatter rather than a failure. A busy account produces
- * hundreds per hour, so they are filtered wherever Baileys gets a logger.
- */
 export const RECOVERY_NOISE: RegExp[] = [
     /deleting poisoned session/i,
     /failed to delete poisoned session/i,
@@ -34,12 +27,6 @@ const flatten = (obj: unknown, msg?: string): string => {
     return `${msg ?? ''} ${extra}`
 }
 
-/**
- * Baileys' key store keeps its own logger for the transaction wrapper and falls
- * back to a console logger when none is passed in. Those lines carry no jid, so
- * the decrypt guard never sees them; filtering the logger handed to the store is
- * the only place that keeps them off the console.
- */
 export function createQuietBaileysLogger(): BaileysLogger {
     const base = toBaileysLogger(
         createLogger(consoleLevel === 'trace' || consoleLevel === 'debug' ? consoleLevel : 'warn', { scope: 'baileys' }),

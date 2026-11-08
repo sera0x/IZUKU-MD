@@ -75,13 +75,6 @@ function wrap(raw: any, driver: string): SqliteHandle {
     }
 }
 
-/**
- * Opens the bot's SQLite file without ever requiring a native build step.
- *
- * Order: bun:sqlite (bun), node:sqlite (node >= 22.5), better-sqlite3 (legacy).
- * The first two ship inside the runtime, so `bun install` / `npm install` never
- * needs node-gyp, python or a C++ toolchain.
- */
 export function openDatabase(path: string): SqliteHandle {
     if (isBun()) {
         try {

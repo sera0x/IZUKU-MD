@@ -46,8 +46,6 @@ ari({
         const target = resolved || ctx.sender
         const name = (await targetName(ctx, target)) || jidToNumber(target)
 
-        // WhatsApp answers the status query with either a plain string or a
-        // `{ status, setAt }` object depending on the client version.
         const query = async (jid: string): Promise<string> => {
             const result = await ctx.sock.fetchStatus(jid)
             const entry = result?.find((item) => item?.status !== undefined)
@@ -56,8 +54,6 @@ ari({
             return typeof text === 'string' ? text.trim() : ''
         }
 
-        // A silent USync failure would leave this command hanging forever, so
-        // every lookup is bounded and a failure still gets a reply.
         const lookup = (jid: string): Promise<string> => withTimeout(query(jid), 6000, '')
 
         let about = await lookup(target)

@@ -5,16 +5,9 @@ import { jidToNumber } from '../../bot/helpers.js'
 
 const STATUS_JID = 'status@broadcast'
 
-/**
- * WhatsApp only delivers a status to the recipients passed as its audience; a
- * status posted without one is dropped by the server. Everyone the bot knows,
- * plus every owner/sudo number, makes up that audience.
- */
 async function statusAudience(sock: any): Promise<string[]> {
     const known = db.contactJids(1000)
 
-    // Contacts the session stores as @lid have no phone jid; resolve them so the
-    // status actually reaches those people too.
     for (const lid of db.contactLids(200)) {
         const mapped = await sock?.signalRepository?.lidMapping
             ?.getPNForLID(lid)

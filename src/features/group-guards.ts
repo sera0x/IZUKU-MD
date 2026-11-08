@@ -42,18 +42,12 @@ async function removeBanned(
         const phone = await phoneJidFor(sock, jid).catch(() => '')
         if (phone) aliases.push(phone)
 
-        // Owners are never removed by the ban guard. A stale row under an old
-        // LID must not be able to kick the account that controls the bot.
         if (aliases.some((alias) => protectedNumbers.has(jidToNumber(alias)))) {
             for (const alias of aliases) db.ban(alias, false)
             allowed.push(jid)
             continue
         }
 
-        // Once the phone number is known it is the single source of truth. A
-        // ban row left behind under the account's LID used to keep someone
-        // banned even after `.unban` cleared their number, so every `.add`
-        // removed them again one second later. A stale LID row no longer wins.
         const authoritative = phone
             ? aliases.filter((alias) => jidToNumber(alias) === jidToNumber(phone))
             : aliases
@@ -89,7 +83,7 @@ export async function enforceAntifake(sock: WASocket, chat: string, joined: stri
 
         try {
             await sock.groupParticipantsUpdate(chat, [jid], 'remove')
-            // Removal still happens; the notice is an auto-send, so it needs .agb live.
+
             if (db.gameActive(chat)) await sock.sendMessage(chat, { text: `+${number} is not allowed in this group.` })
         } catch (error) {
             log.warn('antifake removal failed for %s: %s', number, (error as Error).message)
@@ -111,11 +105,10 @@ export async function handleParticipantUpdate(
     const groupName = cleanGroupName(metadata.subject)
 
     if (update.action === 'add') {
-        // A banned user can be re-added by any group admin. Remove them again
-        // before welcome/antifake handling so they cannot rejoin silently.
+
         const allowed = await removeBanned(sock, update.id, update.participants)
         const joined = await enforceAntifake(sock, update.id, allowed)
-        // Welcome only in groups with an active .agb live record.
+
         if (!settings.welcome || config.features.welcomeCard || !db.gameActive(update.id)) return
 
         for (const jid of joined) {
@@ -131,7 +124,6 @@ export async function handleParticipantUpdate(
         return
     }
 
-    // Goodbye only in groups with an active .agb live record.
     if (update.action === 'remove' && settings.goodbye && !config.features.welcomeCard && db.gameActive(update.id)) {
         for (const jid of ids) {
             const text = render(config.goodbyeMessage, {

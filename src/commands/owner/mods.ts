@@ -4,10 +4,6 @@ import { db } from '../../db/index.js'
 import { identityAliases, normalizeTarget, resolveTarget, tagOf } from '../../bot/group-utils.js'
 import { jidToNumber } from '../../bot/helpers.js'
 
-// Mods pass the game gates (.agb live/kill, .pspawn, .spawn-free games) but
-// never owner-only commands, and never the .spawn card spawner. Hidden from
-// the menu for everyone.
-
 ari({
     name: 'addmod',
     description: 'Give a user mod access to the game commands (owner only, hidden)',
@@ -28,8 +24,7 @@ ari({
         }
         const aliases = await identityAliases(ctx, raw)
         for (const jid of new Set([raw, target, ...aliases].filter(Boolean))) db.modAdd(jid, ctx.sender)
-        // @digits plus the mention list: WhatsApp renders the real push/contact
-        // name, which stays correct when the user renames themselves.
+
         await ctx.reply(`${tagOf(undefined, target)} is a mod now ✅`, [target])
     },
 })

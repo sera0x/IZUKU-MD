@@ -9,7 +9,6 @@ import { selfChatJid } from './helpers.js'
 const exec = promisify(execFile)
 const log = createLogger(config.logLevel, { scope: 'update' })
 
-/** Last commit sha the owner was told about, so a notice is sent only once. */
 const NOTIFIED_KEY = 'UPDATE_NOTIFIED_SHA'
 
 export interface UpdateStatus {
@@ -36,18 +35,12 @@ async function git(args: string[]): Promise<string> {
     return stdout.trim()
 }
 
-/**
- * The repo that `.update` compares against must be the one `git pull` actually
- * pulls from, so the local remote wins over the public repo URL in the config —
- * the game build tracks IZUKU-MD-FULL, and comparing it with IZUKU-MD made every
- * check report an update that `git pull` could never install.
- */
 async function repoSlug(): Promise<{ owner: string; name: string }> {
     try {
         const remote = slugFromUrl(await git(['remote', 'get-url', 'origin']))
         if (remote) return remote
     } catch {
-        // not a git checkout — fall back to the configured link
+
     }
     return slugFromUrl(config.links.repo) ?? { owner: 'sera0x', name: 'IZUKU-MD' }
 }
@@ -60,11 +53,6 @@ export async function localSha(): Promise<string> {
     }
 }
 
-/**
- * Compare the running checkout with the newest commit on GitHub. A commit that
- * is already an ancestor of HEAD is not an update, so a local merge or extra
- * commits do not produce a false notice.
- */
 export async function checkForUpdate(): Promise<UpdateStatus> {
     const status: UpdateStatus = { checked: false, available: false, localSha: '', remoteSha: '', summary: '' }
     try {
@@ -147,14 +135,9 @@ async function step(command: string, args: string[]): Promise<{ ok: boolean; out
     }
 }
 
-/** Pull, install and rebuild. The caller restarts the bot when this succeeds. */
 export async function applyUpdate(): Promise<UpdateRun> {
     const logLines: string[] = []
 
-    // Deployments usually carry local edits: a hand-applied patch, a config
-    // tweak made in place. `git pull --ff-only` refuses to touch any of them
-    // and aborts the whole update, so move them aside first and put them back
-    // afterwards instead of making the owner clean the tree by hand.
     const status = await step('git', ['status', '--porcelain'])
     const dirty = status.ok && status.output.trim().length > 0
     if (dirty) {
@@ -177,9 +160,7 @@ export async function applyUpdate(): Promise<UpdateRun> {
         const pop = await step('git', ['stash', 'pop'])
         logLines.push(`$ git stash pop\n${pop.output.slice(-600)}`)
         if (!pop.ok) {
-            // The pulled build already contains these edits, or they conflict
-            // with it. Clear the half-merged working tree and leave the stash in
-            // place so nothing the owner wrote is ever thrown away.
+
             await step('git', ['checkout', '--', '.'])
             logLines.push('Local edits were kept in a stash — reapply with `git stash pop`.')
         }
@@ -196,11 +177,6 @@ export async function applyUpdate(): Promise<UpdateRun> {
     return { ok: true, output: logLines.join('\n\n') }
 }
 
-/**
- * Tell the owner about a newer commit — once per commit, so a restart does not
- * repeat the notice. The groups are never told: the update belongs to whoever
- * runs the bot.
- */
 export async function announceUpdate(sock: WASocket): Promise<void> {
     const status = await checkForUpdate()
     if (!status.available) {

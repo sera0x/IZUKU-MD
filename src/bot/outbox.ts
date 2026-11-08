@@ -4,11 +4,6 @@ import type { WASocket } from 'baileys'
 import { config } from '../config.js'
 import { createLogger } from '../logger.js'
 
-// Outbound bridge: an external process appends one JSON object per line to
-// data/outbox.jsonl, e.g. {"to":"2349051178294","text":"hi"}. The bot polls the
-// file every 2s, sends each message through the live socket, and records the
-// outcome in data/outbox.sent.log. Invalid lines are logged and skipped.
-
 const log = createLogger(config.logLevel, { scope: 'outbox' })
 
 const DATA_DIR = resolve(process.cwd(), 'data')
@@ -66,7 +61,7 @@ async function drain(): Promise<void> {
         return
     }
     busy = true
-    // Atomically take the current batch so appenders never race our reads.
+
     const batch = join(DATA_DIR, `outbox.inflight-${Date.now()}.jsonl`)
     try {
         renameSync(OUTBOX, batch)
@@ -104,7 +99,7 @@ async function drain(): Promise<void> {
         try {
             unlinkSync(batch)
         } catch {
-            // already gone
+
         }
         busy = false
     }

@@ -7,20 +7,6 @@ import { createLogger } from '../logger.js'
 import { contextInfoOf, jidToNumber } from '../bot/helpers.js'
 import { phoneDigitsFor, sameUser } from '../bot/identity.js'
 
-/**
- * Durable message cache backed by the bot's SQLite file.
- *
- * Two features depend on it:
- *   - anti-delete needs the original message after WhatsApp sends a revoke,
- *     even when the bot was restarted in between.
- *   - quoted-target resolution needs the author of a message that is not
- *     available in the client's contextInfo anymore.
- *
- * Messages are stored as protobuf bytes so media keys and binary fields
- * survive the round trip. Retention is 7 days or 100k rows, whichever is hit
- * first.
- */
-
 export interface StoredMessage {
     key: WAMessageKey
     message: proto.IMessage
@@ -35,7 +21,6 @@ const TTL = 7 * 24 * 60 * 60 * 1000
 const MAX_ENTRIES = 100_000
 const CLEANUP_INTERVAL = 10 * 60 * 1000
 
-// Sender names are small and only used for display; they stay in memory.
 const names = new Map<string, { name: string; at: number }>()
 
 mkdirSync(dirname(config.dbPath), { recursive: true })
@@ -65,8 +50,7 @@ const upsertStmt = sqlite.prepare(
 const insertIfMissingStmt = sqlite.prepare(
     'INSERT OR IGNORE INTO message_store (chat, id, sender, push_name, key_json, message, at) VALUES (?, ?, ?, ?, ?, ?, ?)',
 )
-// Persistent record of message ids already acted on. Survives restarts, so
-// a replayed queue after reconnect can never re-run old commands.
+
 sqlite.exec('CREATE TABLE IF NOT EXISTS processed_ids (id TEXT PRIMARY KEY, at INTEGER)')
 const insertProcessedStmt = sqlite.prepare('INSERT OR IGNORE INTO processed_ids (id, at) VALUES (?, ?)')
 const checkProcessedStmt = sqlite.prepare('SELECT 1 FROM processed_ids WHERE id = ?')
@@ -172,15 +156,12 @@ export function rememberMessage(
     if (sender && name) names.set(sender, { name, at: Date.now() })
 
     const now = Date.now()
-    // Backfilled messages (history replay) must never replace a row written
-    // live, which carries the real sender.
+
     writeEntry(options.onlyIfMissing ? insertIfMissingStmt : upsertStmt, chat, id, msg.key, msg.message, sender, name, now)
 
     const context = contextInfoOf(msg.message)
     if (context?.quotedMessage && context.stanzaId) {
-        // Never let a reply overwrite the real cached message with the reply's
-        // author. contextInfo.participant is occasionally the caller, which is
-        // exactly what made `.ban` use the command issuer's name.
+
         const quotedSender = context.participant ?? ''
         writeEntry(
             insertIfMissingStmt,
@@ -227,11 +208,9 @@ export function storedSenderName(entry: StoredMessage | undefined): string {
     return entry.pushName || latestNameFor(entry.sender) || jidToNumber(entry.sender)
 }
 
-/** Exposed for diagnostics. */
 export function messageStoreSize(): number {
     return (countStmt.get() as { total: number }).total
 }
 
-/** Phone digits helper re-exported so callers do not need the identity module. */
 export const storedSenderDigits = (entry: StoredMessage | undefined): string =>
     entry ? phoneDigitsFor(entry.sender) || jidToNumber(entry.sender) : ''

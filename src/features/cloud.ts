@@ -6,26 +6,13 @@ import { restoreGames, snapshotGames } from './tictactoe.js'
 import { restoreChessGames, snapshotChessGames } from './chess.js'
 import { rawDb } from '../db/index.js'
 
-/**
- * Cloud mirror for player data.
- *
- * Games and the cross-game scoreboard live in SQLite, which dies with the VPS.
- * They are also written to the dkit key-value store (backed by Cloudflare) and
- * pulled back at startup, so a rebuild restores streaks, wins and any match
- * that was still in progress.
- *
- * Writes are debounced and fire-and-forget: `dkit` is a CLI, and a move must
- * never wait on the network. Nothing here throws into the message pipeline.
- */
-
 const exec = promisify(execFile)
 const log = createLogger(config.logLevel, { scope: 'cloud' })
 
 const PREFIX = (process.env.CLOUD_PREFIX ?? 'izuku:').trim() || 'izuku:'
 const GAMES_KEY = `${PREFIX}ttt:games`
 const CHESS_KEY = `${PREFIX}chess:games`
-/** Cards, decks, wallets, clans and marriages. Kept separately from the stats
- * blob so a bad card row cannot block a win from being restored. */
+
 const STATE_KEY = `${PREFIX}tcg:state`
 const ENABLED = (process.env.CLOUD_SYNC ?? '1').trim().toLowerCase() !== '0'
 const TIMEOUT_MS = (() => {
@@ -80,7 +67,6 @@ async function kvSet(key: string, value: unknown): Promise<boolean> {
     }
 }
 
-/** Pull the mirrored state back after a restart or a move to a new VPS. */
 export async function restoreCloudState(): Promise<{ games: number; players: number }> {
     if (!available()) return { games: 0, players: 0 }
 
@@ -96,8 +82,6 @@ export async function restoreCloudState(): Promise<{ games: number; players: num
         log.info('restored %d game(s) and %d card row(s) from the cloud store', restoredGames, cards)
     }
 
-    // Push what we have as soon as the bot is up, so the mirror is complete even
-    // if the previous run was killed before its debounced flush ran.
     syncSoon()
     return { games: restoredGames, players: 0 }
 }
@@ -120,7 +104,6 @@ async function flush(): Promise<void> {
     }
 }
 
-/** Queue a debounced upload. Safe to call on every move. */
 export function syncSoon(): void {
     if (!available()) return
 
@@ -134,7 +117,6 @@ export function syncSoon(): void {
     timer.unref?.()
 }
 
-/** Flush immediately (used by tests and by shutdown). */
 export async function flushCloudState(): Promise<void> {
     if (timer) {
         clearTimeout(timer)
@@ -167,7 +149,6 @@ const tableExists = (name: string): boolean =>
 const columnsOf = (table: string): Set<string> =>
     new Set((rawDb.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>).map((row) => row.name))
 
-/** Read every durable game row: collections, decks, wallets, clans, marriages. */
 export function snapshotGameState(): GameStateSnapshot {
     const tables: Record<string, Array<Record<string, unknown>>> = {}
     for (const table of STATE_TABLES) {
@@ -183,10 +164,6 @@ export function snapshotGameState(): GameStateSnapshot {
     return { savedAt: Date.now(), users, tables }
 }
 
-/**
- * Merge a mirror back in without ever lowering a balance: rows are replaced by
- * key, and wallet columns keep whichever side is higher.
- */
 export function restoreGameState(snapshot: Partial<GameStateSnapshot> | null | undefined): number {
     if (!snapshot) return 0
 

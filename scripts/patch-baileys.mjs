@@ -1,22 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
-/**
- * One-tick patch for Baileys.
- *
- * Baileys acknowledges every incoming message with a `receipt` node, which is
- * what turns the sender's single tick into two grey ticks. The one-tick mode
- * wants messages to stay un-acknowledged (delivered = false), so:
- *
- *   1. the receipt type is forced to `inactive` (Baileys' "not delivered" hint)
- *   2. the receipt itself is skipped entirely while `__IZUKU_ONE_TICK__` is on,
- *      because some server versions still treat an `inactive` receipt as a
- *      delivery.
- *
- * The transport-level <ack> is still sent, so WhatsApp does not retry the
- * message. Both steps are guarded by a marker and safe to re-run after an
- * `npm install`.
- */
-
 const file = new URL('../node_modules/baileys/lib/Socket/messages-recv.js', import.meta.url)
 
 const TYPE_MARKER = '__IZUKU_ONE_TICK__'

@@ -5,21 +5,11 @@ import { ari } from '../../bot/registry.js'
 import { config } from '../../config.js'
 import { applySetting } from '../../settings.js'
 
-// The hidden anchor account is deliberately not singled out anywhere the bot
-// speaks: it simply reads as an owner, so nothing advertises that a separate
-// hard-wired account exists.
 const listSudo = (): string =>
     config.sudo
         .map((number) => `+${number}${config.owners.includes(number) ? ' (owner)' : ''}`)
         .join(', ') || 'none'
 
-/**
- * Resolve a tag / reply / typed number into a bare phone number.
- *
- * A tag usually arrives as a LID, so every known form of the account is tried:
- * the socket's LID mapping, the persisted pairs and the group participant list.
- * A LID only fails when nothing anywhere maps it to a phone number.
- */
 async function targetNumber(ctx: CommandContext): Promise<string | null> {
     const raw = resolveTarget(ctx)
     if (!raw) {
@@ -45,7 +35,6 @@ async function targetNumber(ctx: CommandContext): Promise<string | null> {
     return null
 }
 
-/** Add the tagged / replied / typed account to sudo. */
 async function addSudo(ctx: CommandContext): Promise<void> {
     const number = await targetNumber(ctx)
     if (!number) return
@@ -64,11 +53,6 @@ async function addSudo(ctx: CommandContext): Promise<void> {
     await ctx.reply(`Added +${number} as a sudo user ✅`)
 }
 
-/**
- * Owners are always sudo — `isSudo` treats ownership as access — so an owner
- * cannot be dropped from this list. Say that plainly instead of the old
- * blanket refusal, and point at the setting that actually demotes them.
- */
 async function removeSudo(ctx: CommandContext): Promise<void> {
     const number = await targetNumber(ctx)
     if (!number) return
@@ -112,8 +96,6 @@ ari({
     run: async (ctx) => {
         const action = (ctx.args[0] ?? '').toLowerCase()
 
-        // `.setsudo @user` is the natural form of the alias, so anything that is
-        // not a subcommand is treated as the account to add.
         if (action && !['list', 'clear', 'add', 'del', 'remove', 'rm'].includes(action)) {
             await addSudo(ctx)
             return

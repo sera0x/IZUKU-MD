@@ -32,8 +32,7 @@ ari({
 
         await ctx.react('⏳')
         try {
-            // Lanczos keeps edges clean; the mild unsharp pass restores the
-            // detail interpolation softens.
+
             const out = await convert(media.buffer, extensionFor(media.mimetype), 'png', [
                 '-vf',
                 `scale=min(iw*${factor}\\,${MAX_SIDE}):-2:flags=lanczos,unsharp=5:5:0.6:5:5:0`,

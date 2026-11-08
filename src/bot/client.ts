@@ -27,10 +27,6 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 type WaVersion = [number, number, number]
 let cachedWaVersion: WaVersion | null = null
 
-// `fetchLatestBaileysVersion` has no timeout in this fork: when GitHub is slow
-// the socket never gets created, so the bot sits silent for minutes after every
-// start or reconnect. Race it against a short timer and fall back to the
-// bundled version — WhatsApp accepts it, and the socket connects immediately.
 async function resolveWaVersion(): Promise<WaVersion> {
     if (cachedWaVersion) return cachedWaVersion
     const fallback = DEFAULT_CONNECTION_CONFIG.version as WaVersion
@@ -64,14 +60,6 @@ function both(obj: unknown, msg?: string): string {
     return `${msg ?? ''} ${stringifySafe(obj)}`
 }
 
-/**
- * libsignal (under Baileys) writes its recovery chatter straight to stderr with
- * `console.error`/`console.warn`: "Failed to decrypt message with any known
- * session", "Session error: Bad MAC" plus a stack trace for every dropped
- * status/lid message. Baileys already deletes the broken session and the next
- * message rekeys, so these lines only bury real errors. Drop them at the stream
- * and keep everything else.
- */
 const LIBSIGNAL_NOISE = [
     /^Failed to decrypt message/,
     /^Session error:/,
@@ -87,7 +75,7 @@ function silenceLibsignalNoise(): void {
     process.stderr.write = ((chunk: unknown, encoding?: unknown, callback?: unknown) => {
         const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
         const trimmed = text.trimStart()
-        // Stack frames belong to the line above, so they go too.
+
         const isNoise =
             LIBSIGNAL_NOISE.some((pattern) => pattern.test(trimmed)) ||
             (trimmed.startsWith('at ') && Date.now() - lastSuppressed < 1000)
@@ -152,9 +140,7 @@ function createSignalGuard(): {
             return
         hits += 1
         if (hits === 1) log.warn('Bad MAC detected — will auto-reset stale sessions.')
-        // Pull the failing chat's jids out of the baileys error payload so we
-        // can drop just that one stale session instead of pairing from scratch.
-        // libsignal reports `{ jid }`; message decrypts carry remoteJid/participant.
+
         const remote = text.match(/"remoteJid":"([^"]+)"/)?.[1]
         const participant = text.match(/"participant":"([^"]+)"/)?.[1]
         const jid = text.match(/"jid":"([^"]+)"/)?.[1]
@@ -166,7 +152,6 @@ function createSignalGuard(): {
         }
     }
 
-    // One line every few minutes instead of one per dropped status/lid message.
     const countSuppressed = (): void => {
         suppressed += 1
         const now = Date.now()
@@ -237,7 +222,6 @@ export class Bot {
         return this.connectedState
     }
 
-
     async start(): Promise<void> {
         while (!this.stopping) {
             const loggedOut = await this.runOnce()
@@ -252,13 +236,6 @@ export class Bot {
 
             this.attempts += 1
 
-            // If we failed to connect 5 times in a row without a single
-            // successful connection, assume the session is dead/not connected:
-            // wipe auth so it doesn't loop forever, and exit cleanly so PM2
-            // doesn't keep thrashing or can be stopped.
-            // While a pairing code is pending, reconnecting is normal: the user
-            // simply has not typed it yet. Exiting here made PM2 restart the bot
-            // and print a brand-new code every few seconds.
             if (!this.connectedState && this.attempts >= 5) {
                 const stale = /QR refs attempts ended|logged out|Stale session/i.test(this.lastFailReason)
                 log.error(
@@ -270,17 +247,13 @@ export class Bot {
                     try {
                         await resetSession()
                     } catch {
-                        /* non-fatal */
+
                     }
                 }
                 this.stopping = true
                 process.exit(0)
             }
 
-            // A socket that opens and then drops straight away is WhatsApp terminating
-            // the session, not a network blip. Retrying after 3s there just hammers
-            // the server, so those retries start at 10s; a real reconnect still
-            // uses the 3s doubling backoff.
             const lived = this.openedAt ? Date.now() - this.openedAt : Number.POSITIVE_INFINITY
             const base = lived < 30_000 ? 10_000 : 3_000
             const delay = Math.min(60_000, base * 2 ** Math.max(0, this.attempts - 1))
@@ -300,11 +273,8 @@ export class Bot {
         this.sock = null
     }
 
-
     private async runOnce(): Promise<boolean> {
 
-        // prepareAuth can refuse a session that does not belong to this
-        // deployment — that must stop the process, not spin in a retry loop.
         let prepared: Awaited<ReturnType<typeof prepareAuth>>
         try {
             prepared = await prepareAuth()
@@ -326,10 +296,7 @@ export class Bot {
             syncFullHistory: false,
             printQRInTerminal: false,
             generateHighQualityLinkPreview: true,
-            // Baileys asks the sender to re-hand a message it could not decrypt.
-            // Answering `undefined` (the old behaviour) left the other side
-            // waiting on WhatsApp to fetch it from a phone, which is the lag
-            // before replies land. Answer from the local message store instead.
+
             getMessage: async (key) => {
                 const id = key.id
                 if (!id) return undefined
@@ -338,9 +305,7 @@ export class Bot {
                     findStoredMessage(id)
                 return stored?.message
             },
-            // Send the retry receipt immediately and allow more rounds: a chat
-            // whose keys rotted then recovers in one round-trip instead of
-            // stalling every other message behind the retry mutex.
+
             retryRequestDelayMs: 0,
             maxMsgRetryCount: 8,
             enableAutoSessionRecreation: true,
@@ -350,11 +315,9 @@ export class Bot {
         this.events.onSocket(sock)
         sock.ev.on('creds.update', saveCreds)
 
-        // Record every id the bot itself sends so pipeline can tell our echoes
-        // apart from the owner typing on the same number (both are fromMe).
         const origSend = sock.sendMessage.bind(sock)
         ;(sock as unknown as { sendMessage: unknown }).sendMessage = async (...args: unknown[]) => {
-            // Bold each outgoing text line (see bold.ts). Partially formatted lines and [image]/[audio] markers are skipped.
+
             const content = args[1] as Record<string, unknown> | undefined
             if (content && typeof content === 'object') {
                 if (typeof content.text === 'string' && !isMarkerLog(content.text) && !isStartupBroadcast(content.text)) content.text = boldText(content.text)
@@ -365,9 +328,6 @@ export class Bot {
             return res
         }
 
-        // Auto-recovery: when a chat's session rots (Bad MAC / counter mismatch),
-        // delete just that session so the next message renegotiates keys instead
-        // of every message from that chat being dropped silently.
         const resetCooldown = new Map<string, number>()
         const resetSessions = (jids: string[]): void => {
             const repo = (sock as unknown as { signalRepository?: { deleteSession: (jids: string[]) => Promise<void> } }).signalRepository
@@ -396,14 +356,6 @@ export class Bot {
             resetSessions(jids)
         }, 15_000)
 
-
-
-
-        // A socket that never emits a single update (no qr, no open, no close)
-        // used to sit there forever: the reconnect loop only reacts to
-        // `connection.update`, so the process looked alive but answered
-        // nothing. Give WhatsApp a deadline and drop the socket so `start()`
-        // retries instead of hanging until someone notices.
         const CONNECT_TIMEOUT_MS = 75_000
         let watchdog: ReturnType<typeof setTimeout> | undefined
 
@@ -417,7 +369,7 @@ export class Bot {
                 try {
                     sock.end(undefined)
                 } catch {
-                    /* already gone */
+
                 }
                 resolve(false)
             }, CONNECT_TIMEOUT_MS)
@@ -436,8 +388,7 @@ export class Bot {
                     this.openedAt = Date.now()
                     this.connectedState = true
                     log.info('Connected to WhatsApp as %s', sock.user?.id ?? 'unknown')
-                    // First-run greeting: once per successful link (qr or pair
-                    // code), the owner gets a short hello with support info.
+
                     if (!db.settingValue('link_greet_sent')) {
                         const target = selfChatJid(sock)
                         if (target) {
@@ -475,8 +426,7 @@ export class Bot {
                         log.error('Another instance is using this session. Stop it, then restart this bot.')
                         this.stopping = true
                     }
-                    // 405/412: session state is stale. Reconnecting with the same
-                    // state just loops, so exit and let pm2 bring up a clean process.
+
                     if (status === 405 || status === 412) {
                         log.error('Stale session state [code: %s]. Exiting so pm2 restarts cleanly.', status)
                         process.exit(0)

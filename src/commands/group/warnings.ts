@@ -20,10 +20,6 @@ const labelFor = async (ctx: CommandContext, jid: string): Promise<string> => {
     return name ? `*${name}*` : targetLabel(jid)
 }
 
-/**
- * Warnings written before the LID/phone normalisation fix may still live under
- * the raw LID. Match both aliases (and their digits) so old counts are kept.
- */
 const warningRows = (ctx: CommandContext, target: string, raw: string) => {
     const digits = new Set([jidToNumber(target), jidToNumber(raw)].filter(Boolean))
     return db

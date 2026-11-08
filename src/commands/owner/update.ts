@@ -2,7 +2,6 @@ import { ari } from '../../bot/registry.js'
 import { applyUpdate, checkForUpdate, updateNotice } from '../../bot/update-checker.js'
 import { setPrompt } from '../../features/prompts.js'
 
-/** Runs the install and restarts the bot once the owner says yes. */
 async function install(reply: (content: string) => Promise<unknown>): Promise<void> {
     await reply(
         [
@@ -48,8 +47,6 @@ ari({
             [updateNotice(status), '', '▸ Reply *yes* to install it, *no* to abort.'].join('\n'),
         )
 
-        // The plain yes/no is caught before command parsing, so the owner does
-        // not have to retype the command with an argument.
         setPrompt(ctx.chat, ctx.sender, async (input) => {
             const answer = input.text.trim().toLowerCase()
             if (!answer.startsWith('y')) {

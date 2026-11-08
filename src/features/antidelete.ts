@@ -10,17 +10,12 @@ const log = createLogger(config.logLevel, { scope: 'antidelete' })
 type MediaDownloader = typeof downloadContentFromMessage
 let mediaDownloader: MediaDownloader = downloadContentFromMessage
 
-/** Test seam: media re-download needs a live WhatsApp connection. */
 export function setAntideleteMediaDownloader(downloader: MediaDownloader): void {
     mediaDownloader = downloader
 }
 
-// Moderation deletes must not be restored by anti-delete, otherwise antilink
-// would immediately undo its own work.
 const botDeletes = new Set<string>()
 
-// WhatsApp can replay the same revoke event after a reconnect. Remember which
-// deletions were already handled so a recovery is never sent twice.
 const handledRevokes = new Set<string>()
 
 export function markBotDelete(id: string | null | undefined): void {
@@ -45,12 +40,6 @@ function rememberRevoke(id: string): boolean {
 const isBroadcastJid = (jid: string | null | undefined): boolean =>
     typeof jid === 'string' && (jid === 'status@broadcast' || jid.endsWith('@broadcast'))
 
-
-
-// `sudo` is gone: forwarding recovered messages to sudo users leaked private
-// chats. `bot` sends recoveries to the bot's own number (self chat) instead of
-// to the anchor/owner. Recovery otherwise stays in the chat it happened in, or
-// goes to one explicitly configured chat.
 export type AntiDeleteMode = 'off' | 'same' | 'bot' | 'jid'
 
 export function isAntiDeleteEnabled(): boolean {
@@ -76,7 +65,6 @@ function destinations(chat: string, sock?: WASocket): string[] {
     }
 }
 
-
 async function recover(
     sock: WASocket,
     dest: string,
@@ -85,8 +73,7 @@ async function recover(
 ): Promise<boolean> {
     const content = entry.message
     const header = `*🪄 Message deleted by ${senderName}*`
-    // Plain text: normal path, proven deliverable. Raw proto text fields are
-    // rejected by sendMessage and silently dropped by relayMessage.
+
     if (typeof content.conversation === 'string') {
         await sock.sendMessage(dest, { text: `${header}\n\n${content.conversation}` })
         return true
@@ -97,11 +84,6 @@ async function recover(
         return true
     }
 
-    // Everything else is forwarded from the cached copy. Re-downloading media
-    // and re-uploading it is what used to fail (expired hosts, keys the bot no
-    // longer can decrypt), and it lost details like the ptt flag on a voice
-    // note. Forwarding sends the original bytes, media type and audio flags
-    // exactly as they were, with no download at all.
     try {
         await sock.sendMessage(dest, { forward: { key: entry.key, message: content } })
         return true
@@ -109,7 +91,6 @@ async function recover(
         log.warn('anti-delete: forward failed (%s), trying a media re-download', (error as Error).message)
     }
 
-    // Fallback: re-download with the stored keys, upload fresh.
     const MEDIA: Record<string, string> = {
         imageMessage: 'image',
         videoMessage: 'video',
@@ -132,8 +113,7 @@ async function recover(
         else if (kind === 'audio')
             await sock.sendMessage(dest, {
                 audio: buffer,
-                // A voice note is opus/ogg and must stay a voice note; the old
-                // hardcoded audio/mpeg made it an unplayable "audio file".
+
                 mimetype: typeof media.mimetype === 'string' ? media.mimetype : 'audio/ogg; codecs=opus',
                 ptt: media.ptt === true,
                 seconds: typeof media.seconds === 'number' ? media.seconds : undefined,
@@ -150,12 +130,6 @@ async function recover(
     return false
 }
 
-
-/**
- * Handle a revoke (`protocolMessage.type === 0`) by resending the cached
- * original message. Returns true when the message was a revoke so the
- * pipeline stops processing it as a normal message.
- */
 export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<boolean> {
     const protocol = unwrapMessage(msg.message)?.protocolMessage
     if (!protocol) return false
@@ -165,9 +139,7 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         typeof rawType === 'object' && rawType !== null && 'toNumber' in rawType
             ? (rawType as { toNumber: () => number }).toNumber()
             : Number(rawType)
-    // Some clients omit the enum on a revoke wrapper. A protocol message with
-    // a target key but no type is still a revoke candidate; other protocol
-    // types (edits, history sync, keys) must never be restored as deletes.
+
     const isRevoke =
         numericType === 0 ||
         String(rawType).toUpperCase() === 'REVOKE' ||
@@ -182,10 +154,6 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
     const chat = msg.key.remoteJid
     if (!id || !chat) return true
 
-    // Deleted statuses are never relayed. They belong to the person who posted
-    // them, and forwarding them anywhere else would leak private content.
-    // Check every JID on the revoke: some clients deliver a status deletion
-    // through a normal-looking wrapper while the target key is the status.
     const outer = msg.key as { remoteJidAlt?: string }
     const deleted = deletedKey as { remoteJid?: string; remoteJidAlt?: string } | undefined
     if (
@@ -199,8 +167,7 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
             return true
         }
         if (!rememberRevoke(id)) return true
-        // A deleted status goes to the bot's own number, never to the owner
-        // chat. Nothing else ever sees the poster's content.
+
         const self = jidNumber(sock.user?.id ?? '')
         if (!self) {
             log.warn('anti-delete: bot number unknown, cannot forward a deleted status')
@@ -258,17 +225,13 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         (storeChat !== chat ? getStoredMessage(chat, id) : undefined) ??
         findStoredMessage(id)
 
-    // Never post into a group without an active .agb live. Owner DM copies are unaffected.
     const destinationList = destinations(chat, sock).filter((dest) => !dest.endsWith('@g.us') || db.gameActive(dest))
     if (!destinationList.length) return true
 
-    // With no cached copy the original sender is unknown, but the revoke still
-    // carries who deleted it — better than printing "unknown".
     const deleter = msg.key.participant ?? chat
     const senderName = entry
         ? storedSenderName(entry) || 'unknown'
         : (msg.pushName ?? '').trim() || jidToNumber(deleter) || 'unknown'
-
 
     if (!entry) {
         log.debug('anti-delete: no cached copy for %s; sending a notice', id)
@@ -281,9 +244,8 @@ export async function handleAntiDelete(sock: WASocket, msg: WAMessage): Promise<
         return true
     }
 
-
     for (const raw of destinationList) {
-        // Relay to the exact chat the revoke arrived in (asamake behaviour).
+
         const dest = raw
         try {
             const restored = await recover(sock, dest, entry, senderName)

@@ -17,11 +17,6 @@ const useColor = process.stdout.isTTY === true
 
 const env = process.env
 
-/**
- * Console verbosity. `LOG_LEVEL` raises it (`debug` shows everything), and
- * `LOG_VERBOSE=on` also lets the noisy runtime scopes back onto the console.
- * The log file always receives every line the bot logs.
- */
 export const consoleLevel = ((): Level => {
     const raw = (env.LOG_LEVEL ?? 'info').toLowerCase()
     return raw in LEVELS ? (raw as Level) : 'info'
@@ -31,8 +26,6 @@ const fileEnabled = (env.LOG_TO_FILE ?? 'on').toLowerCase() !== 'off'
 export const logFilePath = env.LOG_FILE || 'data/logs/izuku.log'
 const verboseConsole = (env.LOG_VERBOSE ?? '').toLowerCase() === 'on'
 
-// Reconnects, stale prekeys and "Bad MAC" retries are runtime chatter: useful
-// when debugging, unreadable in a terminal or a pm2 log for the bot owner.
 const QUIET_SCOPES = new Set(['whatsapp', 'baileys', 'socket', 'signal', 'connection', 'noise'])
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -72,7 +65,6 @@ function format(bindings: Record<string, unknown>, msg: string, args: unknown[])
         .join(' ')
     const head = scope ? `[${scope}] ` : ''
 
-
     let index = 0
     const body = msg.replace(/%[sdoj]/g, () => (index < args.length ? render(args[index++]) : '%s'))
     const extra = args.slice(index).map(render).join(' ')
@@ -90,8 +82,6 @@ export function createLogger(level: Level = 'info', bindings: Record<string, unk
         const text = format(bindings, msg, args)
         writeFileLine(`${new Date().toISOString()} ${lvl.toUpperCase().padEnd(5)} ${text}`)
 
-        // Errors and fatal lines always reach the console; the rest of a quiet
-        // scope only shows up in the log file.
         if (quiet && lvl !== 'error' && lvl !== 'fatal') return
         if (LEVELS[lvl] < LEVELS[consoleLevel]) return
 
@@ -134,9 +124,6 @@ const stringify = (obj: unknown): string => {
     }
 }
 
-// One contact whose pre-keys are gone makes Baileys retry a USync lookup every
-// minute, and every attempt ends in a query timeout. Nothing can act on it, it
-// repeats forever, and it buries real warnings, so it is dropped here.
 const BAILEYS_NOISE = /timed out waiting for message|USync fetch yielded no results|for pending PNs/
 
 export function toBaileysLogger(source: Logger): BaileysLogger {

@@ -22,17 +22,10 @@ export async function runStartupCleaner(): Promise<void> {
 }
 
 export function hasRegisteredSession(): boolean {
-    // Reads through the vault, so an encrypted session counts and a session
-    // that belongs to another deployment fails loudly instead of silently
-    // triggering a fresh pairing over the top of it.
+
     return loadCreds()?.registered === true
 }
 
-/**
- * Move an invalid session aside instead of deleting it. A stray logout used to
- * wipe the only copy of the credentials, which made the bot impossible to
- * restore without pairing again.
- */
 async function archiveSession(reason: string): Promise<boolean> {
     if (!existsSync(config.sessionDir)) return false
 
@@ -64,7 +57,7 @@ export async function clearUnfinishedPairing(): Promise<void> {
 }
 
 async function writeSessionFromId(sessionId: string): Promise<void> {
-    // Any stored session (plaintext or sealed) wins over SESSION_ID.
+
     if (loadCreds()) return
 
     let payload = sessionId.trim()
@@ -76,8 +69,6 @@ async function writeSessionFromId(sessionId: string): Promise<void> {
         payload = (await response.text()).trim()
     }
 
-    // Short tokens (12 chars, e.g. from the pairing site) resolve over HTTP:
-    // the site stores the base64 creds and hands them out once.
     if (/^(?:IZUKU-)?[A-Za-z0-9]{12}$/i.test(payload.trim()) && config.pairServer) {
         const res = await fetch(`${config.pairServer.replace(/\/$/, '')}/session/${payload.trim().replace(/^IZUKU-/i, 'IZUKU-')}`)
         if (!res.ok) throw new Error('Short SESSION_ID rejected by pair server.')
@@ -99,15 +90,10 @@ async function writeSessionFromId(sessionId: string): Promise<void> {
     log.info('Session restored from SESSION_ID')
 }
 
-/** Phone number part of a JID, ignoring the device suffix (`:12@…`). */
 function jidNumber(jid: string): string {
     return (jid.split('@')[0] ?? '').split(':')[0] ?? ''
 }
 
-/**
- * Make the account that owns this session usable, instead of refusing to boot
- * over a misconfigured owner list.
- */
 function adoptSelf(number: string, reason: string): void {
     config.owners = [...new Set([...config.owners, number])]
     config.sudo = [...new Set([...config.sudo, number])]
@@ -115,16 +101,6 @@ function adoptSelf(number: string, reason: string): void {
     log.warn('%s — running with +%s as an owner.', reason, number)
 }
 
-/**
- * A deployment only runs with the account it was paired with.
- *
- * A bot that has no owner configured at all must still come up: the account the
- * session belongs to becomes the owner, so the person who deployed it is never
- * locked out of their own bot. When a different account WAS configured, the
- * session number is simply added as well — a mistyped OWNER_NUMBER used to be a
- * crash loop, and the session is still tied to this install by the vault key.
- * Set ALLOW_FOREIGN_SESSION=1 to keep the old silence about it.
- */
 function assertSessionOwner(credId: string | undefined): void {
     const me = jidNumber(credId ?? '')
     if (!me) return
@@ -158,15 +134,12 @@ export async function prepareAuth(): Promise<PreparedAuth> {
 
     await mkdir(config.sessionDir, { recursive: true })
 
-    // Encryption first: credentials from an older version are sealed before
-    // anything reads them, so a stolen `data/session` folder is ciphertext.
     migrateCreds()
 
     const { state } = await useMultiFileAuthState(config.sessionDir)
     const stored = loadCreds()
     if (stored) state.creds = stored
 
-    // A device id carries a `:device` suffix, so only the phone part is compared.
     assertSessionOwner(state.creds.me?.id)
     hardenPermissions()
 

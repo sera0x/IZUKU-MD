@@ -1,7 +1,31 @@
 {
     "name": "izuku-md",
     "version": "0.0.7",
-    "description": "WhatsApp bot built with Bun, TypeScript and Baileys.",
+    "description": "IZUKU-MD is a free, open-source WhatsApp bot written in TypeScript on Baileys: downloads, stickers, games, group admin and 100+ commands.",
+    "keywords": [
+        "whatsapp-bot",
+        "whatsapp",
+        "whatsapp-automation",
+        "baileys",
+        "wa-bot",
+        "izuku-md",
+        "izuku-md-bot",
+        "chatbot",
+        "sticker-bot",
+        "downloader-bot",
+        "group-management",
+        "nodejs",
+        "typescript",
+        "bun"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sera0x/IZUKU-MD.git"
+    },
+    "bugs": {
+        "url": "https://github.com/sera0x/IZUKU-MD/issues"
+    },
+    "homepage": "https://github.com/sera0x/IZUKU-MD#readme",
     "main": "index.js",
     "type": "module",
     "engines": {

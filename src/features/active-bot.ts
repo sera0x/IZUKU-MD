@@ -12,7 +12,7 @@ export const activeBotKey = (chat: string): string => `active_bot:${chat}`
 
 /** `IZUKU-MD 1` and `izuku-md-1` are the same answer. */
 export function normalizeBotRef(value: string): string {
-    return value.trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/^-+|-+$/g, '')
+    return value.trim().replace(/^\+/, '').toLowerCase().replace(/[\s_]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
 /** How this deployment can be named: its BOT_NAME, and its own number. */

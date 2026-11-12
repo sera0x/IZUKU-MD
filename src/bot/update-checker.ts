@@ -121,6 +121,30 @@ export interface UpdateRun {
     output: string
 }
 
+async function upstreamRef(): Promise<string> {
+    try {
+        const ref = await git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])
+        if (ref) return ref
+    } catch {
+
+    }
+    try {
+        await git(['rev-parse', '--verify', 'origin/main'])
+        return 'origin/main'
+    } catch {
+        return ''
+    }
+}
+
+async function localPatches(target: string): Promise<string[] | null> {
+    try {
+        const out = await git(['cherry', target, 'HEAD'])
+        return out.split('\n').filter((line) => line.startsWith('+'))
+    } catch {
+        return null
+    }
+}
+
 async function step(command: string, args: string[]): Promise<{ ok: boolean; output: string }> {
     try {
         const { stdout, stderr } = await exec(command, args, {
@@ -146,14 +170,52 @@ export async function applyUpdate(): Promise<UpdateRun> {
         if (!stash.ok) return { ok: false, output: logLines.join('\n\n') }
     }
 
-    const pull = await step('git', ['pull', '--ff-only'])
-    logLines.push(`$ git pull\n${pull.output.slice(-600)}`)
-    if (!pull.ok) {
-        if (dirty) {
-            const back = await step('git', ['stash', 'pop'])
-            logLines.push(`$ git stash pop\n${back.output.slice(-400)}`)
-        }
+    const restore = async (): Promise<void> => {
+        if (!dirty) return
+        const back = await step('git', ['stash', 'pop'])
+        logLines.push(`$ git stash pop\n${back.output.slice(-400)}`)
+    }
+
+    const fetch = await step('git', ['fetch', '--prune', 'origin'])
+    logLines.push(`$ git fetch\n${fetch.output.slice(-400)}`)
+    if (!fetch.ok) {
+        await restore()
         return { ok: false, output: logLines.join('\n\n') }
+    }
+
+    const target = await upstreamRef()
+    if (!target) {
+        logLines.push('This checkout has no branch to update from.')
+        await restore()
+        return { ok: false, output: logLines.join('\n\n') }
+    }
+
+    const ff = await step('git', ['merge', '--ff-only', target])
+    logLines.push(`$ git merge --ff-only ${target}\n${ff.output.slice(-600)}`)
+    if (!ff.ok) {
+        const patches = await localPatches(target)
+        let recovered = false
+        if (patches?.length === 0) {
+            const reset = await step('git', ['reset', '--hard', target])
+            recovered = reset.ok
+            logLines.push(
+                `$ git reset --hard ${target}\n${reset.output.slice(-300)}\nThe local branch had no commits of its own, so it now follows ${target}.`,
+            )
+        } else {
+            const merge = await step('git', ['merge', '--no-edit', target])
+            recovered = merge.ok
+            logLines.push(`$ git merge --no-edit ${target}\n${merge.output.slice(-600)}`)
+            if (!merge.ok) {
+                await step('git', ['merge', '--abort'])
+                logLines.push(
+                    `\nThis checkout has local commits that conflict with ${target}. On the server run \`git reset --hard ${target}\` to follow GitHub.`,
+                )
+            }
+        }
+        if (!recovered) {
+            await restore()
+            return { ok: false, output: logLines.join('\n\n') }
+        }
     }
 
     if (dirty) {

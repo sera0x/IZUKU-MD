@@ -7,7 +7,7 @@ async function install(reply: (content: string) => Promise<unknown>): Promise<vo
         [
             '⬇️ *Updating…*',
             '',
-            '▸ git pull',
+            '▸ git fetch + merge',
             '▸ npm install',
             '▸ npm run build',
             '',

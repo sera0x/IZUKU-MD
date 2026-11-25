@@ -6,17 +6,32 @@ const axios = axiosRaw as any
 const UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
 
-export function metaContent(html: string, property: string): string | undefined {
+function decodeEntities(value: string): string {
+    return value
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+}
+
+export function metaText(html: string, property: string): string | undefined {
     const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const patterns = [
         new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]*content=["']([^"']+)["']`, 'i'),
         new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${escaped}["']`, 'i'),
     ]
     for (const pattern of patterns) {
-        const value = pattern.exec(html)?.[1]?.replace(/&amp;/g, '&')
-        if (value && /^https?:\/\//i.test(value)) return value
+        const value = pattern.exec(html)?.[1]
+        if (value) return decodeEntities(value)
     }
     return undefined
+}
+
+export function metaContent(html: string, property: string): string | undefined {
+    const value = metaText(html, property)
+    return value && /^https?:\/\//i.test(value) ? value : undefined
 }
 
 export async function imgurDl(url: string) {
@@ -27,7 +42,7 @@ export async function imgurDl(url: string) {
     const html = String(response.data ?? '')
     if (html.length < 200) throw new Error('Imgur returned an empty page')
 
-    const rawTitle = metaContent(html, 'og:title')
+    const rawTitle = metaText(html, 'og:title')
     const caption = ['*Imgur*', rawTitle ? rawTitle.slice(0, 200) : ''].filter(Boolean).join('\n')
 
     const raw = metaContent(html, 'og:video') ?? metaContent(html, 'twitter:player:stream')

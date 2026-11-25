@@ -56,10 +56,12 @@ ari({
         const statusReply = context?.remoteJid === 'status@broadcast' || Boolean(statusMention)
         const stored = context?.stanzaId ? findStoredMessage(context.stanzaId) : undefined
 
-        const content =
-            unwrapMessage(statusReply ? stored?.message : undefined) ??
-            unwrapMessage(context?.quotedMessage) ??
-            unwrapMessage(stored?.message)
+        const candidates = [
+            unwrapMessage(statusReply ? stored?.message : undefined),
+            unwrapMessage(context?.quotedMessage),
+            unwrapMessage(stored?.message),
+        ].filter((entry): entry is proto.IMessage => Boolean(entry))
+        const content = candidates[0]
 
         if (!content) {
             log.debug('save: nothing quotable in %s', JSON.stringify(Object.keys(ctx.msg.message ?? {})))
@@ -73,13 +75,23 @@ ari({
 
         const type = mediaTypeOf(content)
         if (type) {
-            const file = await downloadMedia(content, type).catch(() => null)
+            let file: { buffer: Buffer; mimetype: string } | null = null
+            let media = content
+            for (const candidate of candidates) {
+                const candidateType = mediaTypeOf(candidate)
+                if (!candidateType) continue
+                file = await downloadMedia(candidate, candidateType).catch(() => null)
+                if (file) {
+                    media = candidate
+                    break
+                }
+            }
             if (!file) {
-                await ctx.reply('Could not download that media 🛑')
+                await ctx.reply('Could not download that media — try replying again right after it arrives 🛑')
                 return
             }
 
-            const caption = extractText(content)
+            const caption = extractText(media)
             const payload =
                 type === 'image'
                     ? { image: file.buffer, caption }
@@ -95,7 +107,9 @@ ari({
                                 fileName: `saved.${extensionFor(file.mimetype)}`,
                             }
 
-            await ctx.sock.sendMessage(ctx.sender, payload)
+            await ctx.sock
+                .sendMessage(ctx.sender, payload)
+                .catch(() => ctx.sock.sendMessage(ctx.chat, payload, { quoted: ctx.msg }))
             await ctx.react('✅')
             return
         }
